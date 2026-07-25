@@ -5,7 +5,7 @@ memory, GPU, and network activity visible without taking mouse input. Optional
 disk, temperature, battery, peak, and process views are enabled only when the
 user chooses them.
 
-[日本語](README.md) | [License](LICENSE) | [Privacy](PRIVACY.md) | [Support](SUPPORT.md) | [Security](SECURITY.md)
+[Bilingual home / 日本語](README.md) | [License](LICENSE) | [Privacy](PRIVACY.md) | [Support](SUPPORT.md) | [Security](SECURITY.md)
 
 ## Release status
 

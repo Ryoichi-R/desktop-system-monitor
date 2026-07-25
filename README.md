@@ -1,6 +1,59 @@
-# Desktop System Monitor
+<h1 align="center">Desktop System Monitor</h1>
 
-[日本語](#日本語) | [English](#english) | [使い方](docs/usage/README.md) | [License](LICENSE) | [Privacy](PRIVACY.md) | [Support](SUPPORT.md) | [Security](SECURITY.md)
+<p align="center">
+  Windows 11の主要なシステム指標を、作業を妨げない小型オーバーレイで表示します。<br>
+  <em>A compact Windows 11 overlay that keeps essential system activity visible without getting in the way.</em>
+</p>
+
+<p align="center">
+  <strong>Source-only experimental preview / ソースのみの評価版</strong>
+</p>
+
+<p align="center">
+  <a href="#日本語">日本語</a> ·
+  <a href="#english">English</a> ·
+  <a href="docs/usage/README.md">使い方</a> ·
+  <a href="LICENSE">License</a> ·
+  <a href="PRIVACY.md">Privacy</a> ·
+  <a href="SUPPORT.md">Support</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
+
+## 画面例 / UI preview
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/media/readme-compact-view.png" height="360" alt="CPU, memory, GPU, and network metrics in the compact Desktop System Monitor view">
+    </td>
+    <td align="center">
+      <img src="docs/media/readme-expanded-view.png" height="360" alt="Desktop System Monitor with optional disk and battery metrics enabled">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>コンパクト表示 / Compact view</strong><br>
+      CPU・メモリ・GPU・ネットワークを常時確認
+    </td>
+    <td align="center">
+      <strong>拡張表示 / Expanded view</strong><br>
+      ディスク・バッテリーなどを必要な場合だけ追加
+    </td>
+  </tr>
+</table>
+
+> 実際のWindows 11上の表示例です。値は動作イメージであり、精度検証の証拠ではありません。利用できないセンサーは`N/A`になります。
+>
+> Actual Windows 11 UI examples. Values illustrate the interface and are not evidence of metric accuracy. Unavailable sensors display `N/A`.
+
+## ひと目で分かる機能 / At a glance
+
+| 項目 / Area | 内容 / What it does |
+| --- | --- |
+| 標準表示 / Default metrics | CPU、メモリ、GPU、ネットワークをコンパクトに表示 / Compact CPU, memory, GPU, and network display |
+| オプション / Optional metrics | ディスク、温度、バッテリー、ピーク、高負荷プロセスを必要な場合だけ追加 / Add disk, temperature, battery, peak, and high-load process views only when needed |
+| 操作性 / Interaction | クリック透過、常に手前、デスクトップ表示、全画面時の自動非表示 / Click-through, always-on-top, desktop placement, and full-screen auto-hide |
+| データ / Data handling | 設定とopt-in診断ログはローカル保存。未対応値は推測せず`N/A`表示 / Settings and opt-in diagnostics stay local; unsupported values show `N/A` instead of estimates |
 
 ## 日本語
 

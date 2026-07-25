@@ -1,15 +1,17 @@
 # Public release implementation status
 
-Updated: 2026-07-25 JST
+Updated: 2026-07-26 JST
 
 ## Selected public scope
 
-Version `0.1.0` is ready for review as a source-only experimental preview.
-Prebuilt executables, portable archives, signed assets, screenshots, and
-distribution submissions are outside this scope. DSM-1, DSM-2, DSM-4,
-publisher identity, and signing remain future binary-release gates.
+Version `0.1.0` is publicly available as a source-only experimental preview.
+Prebuilt executables, portable archives, signed assets, release-candidate media,
+and distribution submissions are outside this scope. Two redacted evaluation UI
+screenshots are included in the README as interface examples, not acceptance
+evidence. DSM-1, DSM-2, DSM-4, publisher identity, and signing remain future
+binary-release gates.
 
-## Implemented locally
+## Implemented and validated
 
 - Repository-local solution, unit/integration tests, coverage scripts, ADR index,
   and standalone GitHub Actions candidates.
@@ -22,11 +24,12 @@ publisher identity, and signing remain future binary-release gates.
 - Build, 581 tests, coverage thresholds, format, JSON/schema, relative links,
   PC-specific path scan, and release dry-run verification.
 
-## Remaining before source publication
+## Source publication status
 
-- Exact external repository owner/name and explicit authority to use Git/GitHub.
-- Final clean source-only snapshot scan and repository handoff review.
-- Separate approval immediately before public visibility.
+- Public repository: `Ryoichi-R/desktop-system-monitor`.
+- Clean source-only snapshot, history, personal-data, and secret scans completed.
+- Public visibility and the initial GitHub Actions run were confirmed on
+  2026-07-26 JST.
 
 Binary publication remains blocked until its separate hardware, signing,
 packaging, and architecture gates pass.

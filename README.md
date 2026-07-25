@@ -1,16 +1,55 @@
 # Desktop System Monitor
 
-## 概要
+[日本語](#日本語) | [English](#english) | [使い方](docs/usage/README.md) | [License](LICENSE) | [Privacy](PRIVACY.md) | [Support](SUPPORT.md) | [Security](SECURITY.md)
+
+## 日本語
+
+### 概要
 
 Windows 11 用の小型デスクトップウィジェット。CPU / メモリ / GPU / ネットワークの主要指標を既定表示し、必要な場合だけディスク、温度、バッテリー、直近ピーク、高負荷プロセス詳細を追加できる。
 
-[English](README.en.md) | [使い方](docs/usage/README.md) | [ライセンス](LICENSE) | [プライバシー](PRIVACY.md) | [サポート](SUPPORT.md) | [セキュリティ](SECURITY.md)
+[英語版の詳細](README.en.md) | [使い方](docs/usage/README.md) | [ライセンス](LICENSE) | [プライバシー](PRIVACY.md) | [サポート](SUPPORT.md) | [セキュリティ](SECURITY.md)
 
 > **Experimental:** `DSM-1` のタスク マネージャー比較とADR確定が終わるまでは評価版である。数値精度を前提にせず、Windowsログオン時の自動起動はDSM-1完了後に有効化する。
 
 > **Source-only preview:** この版では公式のprebuilt EXE、portable ZIP、
 > 署名済みbinaryを配布しない。利用者がsourceからローカルbuildする評価版であり、
 > 指標精度、24時間安定性、個別環境での動作、応答期限付きsupportを保証しない。
+
+## English
+
+### Overview
+
+Desktop System Monitor is an experimental Windows 11 overlay that keeps CPU,
+memory, GPU, and network activity visible without taking mouse input. Optional
+disk, temperature, battery, peak, and process views are enabled only when the
+user chooses them.
+
+[Full English README](README.en.md) | [Usage (Japanese)](docs/usage/README.md) | [License](LICENSE) | [Privacy](PRIVACY.md) | [Support](SUPPORT.md) | [Security](SECURITY.md)
+
+> **Experimental:** This is an evaluation build until the `DSM-1` comparison
+> against Task Manager and the related ADR are complete. Do not rely on metric
+> accuracy, and do not enable automatic startup before `DSM-1` is complete.
+
+> **Source-only preview:** No official prebuilt EXE, portable ZIP, or signed
+> binary is distributed. Users build the source locally; metric accuracy,
+> 24-hour stability, operation on individual hardware, and response-time
+> support are not guaranteed.
+
+### Quick build
+
+Windows 11, PowerShell 7, and the .NET SDK selected by `global.json` are
+required. These commands create local, unsigned builds:
+
+```powershell
+dotnet build .\src\DesktopSystemMonitor.App\DesktopSystemMonitor.App.csproj -c Release
+pwsh .\scripts\publish-desktop-system-monitor.ps1 -Runtime win-x64
+# For Windows on ARM:
+pwsh .\scripts\publish-desktop-system-monitor.ps1 -Runtime win-arm64
+```
+
+See the [full English README](README.en.md) for highlights, tests, and release
+details. The detailed Japanese documentation continues below.
 
 ## 実装状況
 

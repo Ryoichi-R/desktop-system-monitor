@@ -1,0 +1,95 @@
+<Window x:Class="DesktopSystemMonitor.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Desktop System Monitor" Width="280" Height="220"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Opacity="1" ShowInTaskbar="False" ResizeMode="NoResize" Topmost="False"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid>
+      <Border x:Name="BackgroundFadeHost" IsHitTestVisible="False">
+        <Border x:Name="BackgroundSurface" Background="Transparent" IsHitTestVisible="False"/>
+      </Border>
+      <Border x:Name="WidgetRoot" Background="Transparent" Padding="8"
+              HorizontalAlignment="Right" VerticalAlignment="Top">
+        <StackPanel>
+            <Grid x:Name="CpuRow" Height="48">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="CpuPrimaryValue" Grid.Column="1" TextAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"><Run Text="{Binding CpuValue}" FontSize="24" Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource WidgetForeground}"/><Run Text="{Binding CpuUnit}" FontSize="13" Foreground="{DynamicResource WidgetMuted}"/></TextBlock>
+                </Grid>
+                <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="CpuTemperatureColumn" Width="0"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding CpuFrequency}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding CpuTemperature}" FontSize="12" TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/>
+                    <TextBlock Grid.Column="2" Text="{Binding CpuPower}" FontSize="12" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/>
+                </Grid>
+                <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2">
+                    <Rectangle HorizontalAlignment="Stretch" Fill="{DynamicResource WidgetAccent}" RenderTransformOrigin="0,0.5"><Rectangle.RenderTransform><ScaleTransform ScaleX="{Binding CpuBarFraction}"/></Rectangle.RenderTransform></Rectangle>
+                    <Rectangle x:Name="CpuPeakMarker" Visibility="Collapsed" Width="1" HorizontalAlignment="Left" Fill="{DynamicResource WidgetForeground}"><Rectangle.RenderTransform><TranslateTransform X="{Binding CpuPeakOffset}"/></Rectangle.RenderTransform></Rectangle>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="MemoryRow" Height="48" Margin="0,4,0,0">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="MEM" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"><TextBlock Text="{Binding MemoryValue}" FontSize="24" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource WidgetForeground}"/><TextBlock Text="{Binding MemoryUnit}" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/></StackPanel>
+                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding MemoryUsage}" FontSize="12" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/>
+                <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2"><Rectangle Fill="{DynamicResource WidgetAccent}" RenderTransformOrigin="0,0.5"><Rectangle.RenderTransform><ScaleTransform ScaleX="{Binding MemoryBarFraction}"/></Rectangle.RenderTransform></Rectangle><Rectangle x:Name="MemoryPeakMarker" Visibility="Collapsed" Width="1" HorizontalAlignment="Left" Fill="{DynamicResource WidgetForeground}"><Rectangle.RenderTransform><TranslateTransform X="{Binding MemoryPeakOffset}"/></Rectangle.RenderTransform></Rectangle></Grid>
+            </Grid>
+
+            <Grid x:Name="GpuRow" Height="48" Margin="0,4,0,0">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="GPU" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"><TextBlock Text="{Binding GpuValue}" FontSize="24" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource WidgetForeground}"/><TextBlock Text="{Binding GpuUnit}" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/></StackPanel>
+                <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="GpuTemperatureColumn" Width="0"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Text="{Binding GpuMemory}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/><TextBlock Grid.Column="1" Text="{Binding GpuTemperature}" FontSize="12" TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/><TextBlock Grid.Column="2" Text="{Binding GpuPower}" FontSize="12" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/></Grid>
+                <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2"><Rectangle Fill="{DynamicResource WidgetAccent}" RenderTransformOrigin="0,0.5"><Rectangle.RenderTransform><ScaleTransform ScaleX="{Binding GpuBarFraction}"/></Rectangle.RenderTransform></Rectangle><Rectangle x:Name="GpuPeakMarker" Visibility="Collapsed" Width="1" HorizontalAlignment="Left" Fill="{DynamicResource WidgetForeground}"><Rectangle.RenderTransform><TranslateTransform X="{Binding GpuPeakOffset}"/></Rectangle.RenderTransform></Rectangle></Grid>
+            </Grid>
+
+            <Grid x:Name="DiskRow" Height="48" Margin="0,4,0,0" Visibility="Collapsed" ToolTip="{Binding DiskStatusMessage}">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="DISK" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                    <TextBlock x:Name="DiskPrimaryValue" Grid.Column="1" TextAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" FontWeight="SemiBold"><Run Text="{Binding DiskValue}" FontSize="24" Foreground="{DynamicResource WidgetForeground}"/><Run Text="%" FontSize="13" Foreground="{DynamicResource WidgetMuted}"/></TextBlock>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="DiskReadRate" Grid.Column="1" TextAlignment="Right" FontSize="11" ToolTip="Physical disk read rate" AutomationProperties.Name="ディスク読込速度"><Run Text="▼ " Foreground="{DynamicResource WidgetRxAccent}"/><Run Text="{Binding DiskRead}" Foreground="{DynamicResource WidgetAccent}"/></TextBlock>
+                    <TextBlock x:Name="DiskWriteRate" Grid.Column="2" TextAlignment="Right" Margin="6,0,0,0" FontSize="11" ToolTip="Physical disk write rate" AutomationProperties.Name="ディスク書込速度"><Run Text="▲ " Foreground="{DynamicResource WidgetTxAccent}"/><Run Text="{Binding DiskWrite}" Foreground="{DynamicResource WidgetAccent}"/></TextBlock>
+                </Grid>
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid Grid.Column="1"><Rectangle Fill="{DynamicResource WidgetAccent}" RenderTransformOrigin="0,0.5"><Rectangle.RenderTransform><ScaleTransform ScaleX="{Binding DiskBarFraction}"/></Rectangle.RenderTransform></Rectangle><Rectangle x:Name="DiskPeakMarker" Visibility="Collapsed" Width="1" HorizontalAlignment="Left" Fill="{DynamicResource WidgetForeground}"><Rectangle.RenderTransform><TranslateTransform X="{Binding DiskPeakOffset}"/></Rectangle.RenderTransform></Rectangle></Grid>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="NetworkRow" Height="48" Margin="0,4,0,0">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="NET" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                    <TextBlock x:Name="NetworkReceiveRate" Grid.Column="1" TextAlignment="Right" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"><Run Text="▼ " Foreground="{DynamicResource WidgetRxAccent}"/><Run Text="{Binding NetworkRx}" Foreground="{DynamicResource WidgetForeground}"/></TextBlock>
+                    <TextBlock x:Name="NetworkSendRate" Grid.Column="2" TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0" FontSize="15" FontWeight="SemiBold"><Run Text="▲ " Foreground="{DynamicResource WidgetTxAccent}"/><Run Text="{Binding NetworkTx}" Foreground="{DynamicResource WidgetForeground}"/></TextBlock>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid x:Name="NetworkPeakRow" Grid.Column="1" Visibility="Collapsed"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="{Binding NetworkPeakLabel}" FontSize="11" Foreground="{DynamicResource WidgetMuted}"/><TextBlock Grid.Column="1" Text="{Binding NetworkPeakRx}" FontSize="11" TextAlignment="Center" Foreground="{DynamicResource WidgetRxAccent}"/><TextBlock Grid.Column="2" Text="{Binding NetworkPeakTx}" FontSize="11" TextAlignment="Right" Foreground="{DynamicResource WidgetTxAccent}"/></Grid>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="BatteryRow" Height="48" Margin="0,4,0,0" Visibility="Collapsed">
+                <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="14"/><RowDefinition Height="0"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Text="BAT" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource WidgetMuted}"/>
+                <TextBlock Grid.Column="1" Text="{Binding BatteryPrimary}" FontSize="20" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource WidgetForeground}"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BatterySecondary}" FontSize="12" TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{DynamicResource WidgetAccent}"/>
+            </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+</Window>

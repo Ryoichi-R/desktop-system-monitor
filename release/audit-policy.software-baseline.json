@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "profile": "software-baseline",
+  "target_kind": "software",
+  "expected_license": "MIT",
+  "required_files": ["README.md"],
+  "recommended_files": [
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "license_files": ["LICENSE", "LICENSE.md", "COPYING", "COPYING.md"],
+  "readme_heading_groups": [
+    { "id": "overview", "aliases": ["Overview", "概要"] },
+    { "id": "requirements", "aliases": ["Requirements", "Prerequisites", "動作要件"] },
+    { "id": "installation", "aliases": ["Installation", "Install", "インストール"] },
+    { "id": "usage", "aliases": ["Usage", "使用方法"] },
+    { "id": "configuration", "aliases": ["Configuration", "設定"] },
+    { "id": "uninstall", "aliases": ["Uninstall", "Removal", "アンインストール", "削除"] },
+    { "id": "limitations", "aliases": ["Known limitations", "Limitations", "既知の制限"] },
+    { "id": "license", "aliases": ["License", "ライセンス"] }
+  ],
+  "require_license_file": true,
+  "require_issue_templates": false,
+  "require_reuse": false,
+  "require_skills_ref": false,
+  "require_skill_validator": false,
+  "enable_alint": false,
+  "enable_trufflehog": false,
+  "enable_github_community_profile": false,
+  "gitleaks_version": "8.30.1",
+  "limits": {
+    "process_timeout_seconds": 300,
+    "max_output_bytes": 4194304,
+    "max_archive_depth": 2,
+    "max_decode_depth": 2,
+    "max_text_file_bytes": 1048576
+  },
+  "allowlist": [],
+  "waivers": [
+    {
+      "rule_id": "email-address-candidate",
+      "fingerprint": "a3e5d34f5f9503319a0cfcc702513d6a8a0142c967571f49a4ac5eb5dfdca388",
+      "reason": "Retain the exact upstream LibreHardwareMonitor legal-attribution notice; re-review if the dependency or notice changes.",
+      "approved_by": "R-Rice",
+      "expires_at": "2027-07-20T14:59:59Z"
+    }
+  ]
+}

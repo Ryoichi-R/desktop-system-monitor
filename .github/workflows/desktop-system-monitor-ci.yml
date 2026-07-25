@@ -1,0 +1,40 @@
+name: desktop-system-monitor
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore tests/unit/Core.Tests/DesktopSystemMonitor.Core.Tests.csproj
+      - run: dotnet build tests/unit/Core.Tests/DesktopSystemMonitor.Core.Tests.csproj --configuration Release --no-restore
+      - run: pwsh scripts/test-desktop-system-monitor.ps1 -Core
+
+  windows-and-integration:
+    name: Windows + Integration + release dry-run
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore DesktopSystemMonitor.slnx
+      - run: dotnet build DesktopSystemMonitor.slnx --configuration Release --no-restore
+      - run: dotnet format DesktopSystemMonitor.slnx --verify-no-changes --severity error
+      - run: pwsh scripts/test-desktop-system-monitor.ps1 -Windows
+      - run: pwsh scripts/coverage-desktop-system-monitor.ps1
+      - run: pwsh scripts/test-publication-contract.ps1
+      - run: pwsh scripts/new-desktop-system-monitor-release.ps1 -DryRun

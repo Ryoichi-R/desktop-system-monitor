@@ -1,0 +1,18 @@
+PackageIdentifier: __PACKAGE_IDENTIFIER__
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: __PUBLISHER__
+PackageName: Desktop System Monitor
+License: __LICENSE__
+ShortDescription: Transparent, click-through system metrics overlay for Windows 11
+InstallerType: zip
+Installers:
+  - Architecture: x64
+    InstallerUrl: __X64_IMMUTABLE_URL__
+    InstallerSha256: __X64_SHA256__
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: DesktopSystemMonitor.exe
+        PortableCommandAlias: desktop-system-monitor
+ManifestType: singleton
+ManifestVersion: 1.10.0

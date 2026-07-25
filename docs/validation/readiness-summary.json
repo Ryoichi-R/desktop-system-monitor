@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "productVersion": "0.1.0",
+  "candidateLineageId": "b1d04966ae4e910f6037355e3ad4050d8734b5401f90c1b03d8cc08ca3907f69",
+  "sourceTreeDigest": "5d67587bdd17c0945a2c3236584622b9470f942300dd29349245fc3c39ac96c7",
+  "generatedAtUtc": "2026-07-25T07:22:30.6855183Z",
+  "architectures": {
+    "win-x64": {
+      "status": "BLOCKED",
+      "artifactSha256": null,
+      "completedTests": [],
+      "blockers": [
+        "Version 0.1.0 is source-only; no official x64 artifact is distributed.",
+        "DSM-1 metric comparison is not complete.",
+        "DSM-2 24-hour endurance test is not complete."
+      ]
+    },
+    "win-arm64": {
+      "status": "BLOCKED",
+      "artifactSha256": null,
+      "completedTests": [],
+      "blockers": [
+        "Version 0.1.0 is source-only; no official ARM64 artifact is distributed.",
+        "DSM-4 ARM64 hardware acceptance is not complete."
+      ]
+    }
+  },
+  "completedPhases": ["DSM-3"],
+  "knownLimitations": [
+    "The public 0.1.0 preview contains source only and no official prebuilt executable.",
+    "Metric accuracy acceptance and 24-hour endurance evidence are pending.",
+    "No architecture asset may be published until its hardware acceptance passes.",
+    "Support and security response are best effort with no guaranteed response time."
+  ],
+  "evidenceHashes": {}
+}

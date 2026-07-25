@@ -1,0 +1,15 @@
+.vs/
+.vscode/
+.idea/
+**/bin/
+**/obj/
+coverage/
+dist/
+result/
+*.user
+*.suo
+*.log
+settings.json
+settings.json.bak
+.release-staging/
+.release-work/

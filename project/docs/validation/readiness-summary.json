@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "productVersion": "0.1.0",
+  "candidateLineageId": "a462c496aac3ba5c01f7d63c48b8205301fa04d609cb021064d441ed7a2d56de",
+  "sourceTreeDigest": "1422bea021928f1420b89b1386aeb42048a0dbdcc0135517230282fd7f4c8129",
+  "generatedAtUtc": "2026-08-02T17:35:23.4734092Z",
+  "architectures": {
+    "win-x64": {
+      "status": "BLOCKED",
+      "artifactSha256": null,
+      "completedTests": [
+        "Phase 6 automated quality gate: 649 tests passed; Release build, format, publication contract, and coverage thresholds passed.",
+        "Phase 5 single-file and installer contract: clean x64 publish and reproducible local-preview payload passed.",
+        "PowerShell 7 and Windows PowerShell 5.1 installer normal, migrated, and distribution-layout tests passed."
+      ],
+      "blockers": [
+        "Version 0.1.0 is source-only; no official x64 artifact is distributed.",
+        "DSM-1 metric comparison is not complete.",
+        "DSM-2 24-hour endurance test is not complete.",
+        "Local-preview payload verification is not public-release evidence."
+      ]
+    },
+    "win-arm64": {
+      "status": "BLOCKED",
+      "artifactSha256": null,
+      "completedTests": [
+        "Phase 6 automated quality gate: 649 tests passed; Release build, format, publication contract, and coverage thresholds passed.",
+        "Phase 5 single-file and installer contract: clean ARM64 cross-publish and reproducible local-preview payload passed.",
+        "PowerShell 7 and Windows PowerShell 5.1 installer normal, migrated, and distribution-layout tests passed."
+      ],
+      "blockers": [
+        "Version 0.1.0 is source-only; no official ARM64 artifact is distributed.",
+        "DSM-4 ARM64 hardware acceptance is not complete.",
+        "Local-preview payload verification is not public-release evidence."
+      ]
+    }
+  },
+  "completedPhases": ["DSM-3"],
+  "knownLimitations": [
+    "The public 0.1.0 preview contains source only and no official prebuilt executable.",
+    "Metric accuracy acceptance and 24-hour endurance evidence are pending.",
+    "The local candidate has reproducible publish and installer evidence, but no public artifact or hardware acceptance.",
+    "No architecture asset may be published until its hardware acceptance passes.",
+    "Support and security response are best effort with no guaranteed response time."
+  ],
+  "evidenceHashes": {}
+}

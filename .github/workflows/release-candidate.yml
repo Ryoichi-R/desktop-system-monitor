@@ -13,6 +13,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
+          global-json-file: project/global.json
       - name: Validate source-only preview contract
-        run: pwsh scripts/test-publication-contract.ps1
+        run: pwsh project/scripts/test-publication-contract.ps1

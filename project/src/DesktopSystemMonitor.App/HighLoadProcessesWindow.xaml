@@ -1,0 +1,28 @@
+<Window x:Class="DesktopSystemMonitor.App.HighLoadProcessesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="高負荷プロセス" Width="760" Height="420"
+        Icon="Assets/DesktopSystemMonitorIcon-v2.png"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="並び順" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="SortBox" Width="140" SelectionChanged="SortBox_SelectionChanged">
+                <ComboBoxItem Content="CPU" Tag="Cpu" IsSelected="True"/>
+                <ComboBoxItem Content="メモリ" Tag="Memory"/>
+                <ComboBoxItem Content="I/O合計" Tag="Io"/>
+            </ComboBox>
+            <TextBlock x:Name="StatusText" Margin="16,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
+        </StackPanel>
+        <DataGrid x:Name="ProcessGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="プロセス" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="PID" Binding="{Binding ProcessId}" Width="70"/>
+                <DataGridTextColumn Header="CPU %" Binding="{Binding CpuDisplay}" Width="80"/>
+                <DataGridTextColumn Header="MEM" Binding="{Binding MemoryDisplay}" Width="100"/>
+                <DataGridTextColumn Header="I/O読込" Binding="{Binding ReadDisplay}" Width="110"/>
+                <DataGridTextColumn Header="I/O書込" Binding="{Binding WriteDisplay}" Width="110"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

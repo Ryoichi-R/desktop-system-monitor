@@ -6,6 +6,16 @@
 coverage/
 dist/
 result/
+/project/installer/payload/*.zip
+/project/installer/payload/payload-manifest.json
+/project/installer/.payload-update.lock
+/project/installer/.payload-transaction.pending.json
+/project/dist/.payload-staging-*/
+/project/dist/.payload-backup-*/
+/project/_internal/migration/
+**/.installer-work/
+/.test-deps/
+/project/.test-deps/
 *.user
 *.suo
 *.log

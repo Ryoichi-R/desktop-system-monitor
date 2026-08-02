@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": ".",
+  "sourceTreeDigest": "1422bea021928f1420b89b1386aeb42048a0dbdcc0135517230282fd7f4c8129",
+  "status": "READY_FOR_AUDIT",
+  "releaseScope": {
+    "channel": "preview",
+    "version": "0.1.0",
+    "distribution": "source-only",
+    "prebuiltArtifacts": false,
+    "support": "best-effort"
+  },
+  "verification": {
+    "releaseBuild": "PASS",
+    "tests": {
+      "core": 234,
+      "windows": 182,
+      "app": 224,
+      "integration": 9,
+      "total": 649
+    },
+    "coverage": {
+      "coreLinePercent": 92.1,
+      "windowsLinePercent": 74.79
+    },
+    "format": "PASS",
+    "publicationContract": "PASS",
+    "releaseDryRun": "PASS"
+  },
+  "unresolvedWarnings": [
+    {
+      "id": "SOURCE-ONLY",
+      "severity": "NOTICE",
+      "reason": "The 0.1.0 preview distributes source only; no official executable, archive, signature, or publisher is claimed."
+    },
+    {
+      "id": "HARDWARE-READINESS",
+      "severity": "NOTICE",
+      "reason": "DSM-1, DSM-2, and DSM-4 remain incomplete and block future binary assets, not source publication."
+    },
+    {
+      "id": "EXTERNAL-TARGET",
+      "severity": "NOTICE",
+      "reason": "Repository owner/name and Git/GitHub authority are supplied only at external handoff."
+    }
+  ]
+}

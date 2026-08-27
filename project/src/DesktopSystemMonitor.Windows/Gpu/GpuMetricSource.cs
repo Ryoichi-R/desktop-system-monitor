@@ -14,11 +14,6 @@ namespace DesktopSystemMonitor.Windows.Gpu;
 /// processes; when the LUID set from GPU Engine no longer matches DXGI's set
 /// we re-run DXGI enumeration as well.
 /// </summary>
-public interface IGpuMetricSource : IMetricSource<GpuSnapshot>
-{
-    void SetPreferredAdapter(ulong? luid);
-}
-
 public sealed class GpuMetricSource : IGpuMetricSource
 {
     private const string EngineWildcard = @"\GPU Engine(*)\Utilization Percentage";

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DesktopSystemMonitor.Mac</RootNamespace>
+    <AssemblyName>DesktopSystemMonitor.Mac</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopSystemMonitor.Core\DesktopSystemMonitor.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DesktopSystemMonitor.Mac.Tests" />
+    <InternalsVisibleTo Include="DesktopSystemMonitor.IntegrationTests.Mac" />
+  </ItemGroup>
+</Project>

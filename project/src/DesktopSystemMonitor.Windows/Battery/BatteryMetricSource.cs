@@ -3,11 +3,6 @@ using DesktopSystemMonitor.Core.Metrics;
 
 namespace DesktopSystemMonitor.Windows.Battery;
 
-public interface IBatteryMetricSource : IMetricSource<BatterySnapshot>
-{
-    void SetEnabled(bool enabled);
-}
-
 public sealed class BatteryMetricSource : IBatteryMetricSource
 {
     private readonly Func<(bool Success, PowerStatusInterop.SystemPowerStatus Value)> _readGeneral;

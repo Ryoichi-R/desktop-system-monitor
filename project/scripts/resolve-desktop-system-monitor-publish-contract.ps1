@@ -54,13 +54,15 @@ function Get-DesktopSystemMonitorPublishArguments {
         [Parameter(Mandatory)][string]$Project,
         [Parameter(Mandatory)][string]$Runtime,
         [Parameter(Mandatory)][string]$OutputDir,
-        [string]$ArtifactsPath
+        [string]$ArtifactsPath,
+        [string]$Framework = 'net10.0-windows10.0.19041.0'
     )
 
     $contract = Get-DesktopSystemMonitorPublishContract
     $args = @(
         $Project
         '--configuration', $contract.Configuration
+        '--framework', $Framework
         '--runtime', $Runtime
         '--self-contained', $contract.SelfContained.ToString().ToLowerInvariant()
         '--output', $OutputDir

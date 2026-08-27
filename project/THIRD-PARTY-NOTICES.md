@@ -3,7 +3,9 @@
 Desktop System Monitor's first-party code is licensed under the MIT License;
 see `LICENSE`. The self-contained distribution includes the following
 third-party components. Package versions are the resolved `win-x64` graph for
-Desktop System Monitor 0.1.0.
+Desktop System Monitor 0.1.0. The Avalonia entries are currently used by the
+new `net10.0` migration target; their final self-contained macOS bundle
+inventory is a Phase 8 task and must be completed before any macOS publish.
 
 | Component | Version | License | Project/source | Bundled license |
 | --- | --- | --- | --- | --- |
@@ -13,6 +15,10 @@ Desktop System Monitor 0.1.0.
 | RAMSPDToolkit-NDD | 1.4.2 | MPL-2.0 | <https://github.com/Blacktempel/RAMSPDToolkit> | `licenses/LibreHardwareMonitorLib-0.9.6/LICENSE` |
 | HidSharp | 2.6.4 | Apache-2.0 | <https://software.seekye.com/hidsharp> | `licenses/HidSharp-2.6.4/LICENSE.txt` |
 | Mono.Posix.NETStandard | 1.0.0 | BSD-3-Clause | <https://www.nuget.org/packages/Mono.Posix.NETStandard/1.0.0> | `licenses/Mono.Posix.NETStandard-1.0.0/LICENSE.txt` |
+| Avalonia | 11.3.20 | MIT | <https://github.com/AvaloniaUI/Avalonia> | To be vendored before macOS publish |
+| Avalonia.Desktop | 11.3.20 | MIT | <https://github.com/AvaloniaUI/Avalonia> | To be vendored before macOS publish |
+| Avalonia.Themes.Fluent | 11.3.20 | MIT | <https://github.com/AvaloniaUI/Avalonia> | To be vendored before macOS publish |
+| Avalonia.Headless.XUnit (test-only) | 11.3.20 | MIT | <https://github.com/AvaloniaUI/Avalonia> | Test dependency; not published |
 | Microsoft .NET runtime and runtime packages | Resolved at publish time (currently 10.0.8); see `licenses/dotnet-runtime-*/` | MIT and bundled third-party terms | <https://github.com/dotnet/dotnet> | `licenses/dotnet-runtime-<resolved-version>/` |
 
 The MPL-2.0 license text is identical for each MPL component and is bundled

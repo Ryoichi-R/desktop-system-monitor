@@ -152,9 +152,4 @@ public sealed class FileSystemSettingsStore : ISettingsStore
         }
     }
 
-    public static string DefaultPath()
-    {
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(local, "DesktopSystemMonitor", "settings.json");
-    }
 }

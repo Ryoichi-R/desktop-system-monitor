@@ -3,11 +3,6 @@ using DesktopSystemMonitor.Windows.Pdh;
 
 namespace DesktopSystemMonitor.Windows.Disk;
 
-public interface IDiskMetricSource : IMetricSource<DiskSnapshot>
-{
-    void SetEnabled(bool enabled, int? selectedDiskNumber);
-}
-
 internal interface IDiskCounterQuery : IDisposable
 {
     bool TryAddCounter(string path);

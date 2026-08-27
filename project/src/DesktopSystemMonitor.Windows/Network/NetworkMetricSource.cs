@@ -14,11 +14,6 @@ namespace DesktopSystemMonitor.Windows.Network;
 /// aggregated; otherwise every non-loopback interface with OperStatus Up is
 /// summed.
 /// </summary>
-public interface INetworkMetricSource : IMetricSource<NetworkSnapshot>
-{
-    void SetSelectedAdapters(IEnumerable<ulong> luids);
-}
-
 public sealed class NetworkMetricSource : INetworkMetricSource
 {
     private readonly IClock _clock;

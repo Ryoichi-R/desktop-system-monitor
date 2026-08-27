@@ -49,10 +49,11 @@ function Resolve-DesktopSystemMonitorRuntimeAssets {
     }
 
     $frameworks = @((Get-DesktopSystemMonitorJsonProperty -Object $assets.project -Name 'frameworks').PSObject.Properties)
-    if ($frameworks.Count -ne 1) {
-        throw "Expected exactly one application framework node in assets: $assetsPath"
+    $windowsFrameworks = @($frameworks | Where-Object { $_.Name -match '^net[^-]+-windows' })
+    if ($windowsFrameworks.Count -ne 1) {
+        throw "Expected exactly one Windows application framework node in assets; found $($windowsFrameworks.Count): $assetsPath"
     }
-    $framework = $frameworks[0]
+    $framework = $windowsFrameworks[0]
     $frameworkValue = $framework.Value
     $downloadDependencies = @((Get-DesktopSystemMonitorJsonProperty -Object $frameworkValue -Name 'downloadDependencies'))
 

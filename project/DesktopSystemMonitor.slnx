@@ -1,14 +1,21 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/DesktopSystemMonitor.Core/DesktopSystemMonitor.Core.csproj" />
+    <Project Path="src/DesktopSystemMonitor.Avalonia.PoC/DesktopSystemMonitor.Avalonia.PoC.csproj" />
     <Project Path="src/DesktopSystemMonitor.Windows/DesktopSystemMonitor.Windows.csproj" />
+    <Project Path="src/DesktopSystemMonitor.Mac/DesktopSystemMonitor.Mac.csproj" />
+    <Project Path="src/DesktopSystemMonitor.Mac.SensorHost/DesktopSystemMonitor.Mac.SensorHost.csproj" />
     <Project Path="src/DesktopSystemMonitor.App/DesktopSystemMonitor.App.csproj" />
     <Project Path="src/DesktopSystemMonitor.Diagnostics/DesktopSystemMonitor.Diagnostics.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/unit/Core.Tests/DesktopSystemMonitor.Core.Tests.csproj" />
     <Project Path="tests/unit/Windows.Tests/DesktopSystemMonitor.Windows.Tests.csproj" />
+    <Project Path="tests/unit/Mac.Tests/DesktopSystemMonitor.Mac.Tests.csproj" />
+    <Project Path="tests/unit/Mac.SensorHost.Tests/DesktopSystemMonitor.Mac.SensorHost.Tests.csproj" />
+    <Project Path="tests/unit/App.Avalonia.Tests/DesktopSystemMonitor.App.Avalonia.Tests.csproj" />
     <Project Path="tests/unit/App.Tests/DesktopSystemMonitor.App.Tests.csproj" />
+    <Project Path="tests/phase0w/DesktopSystemMonitor.Avalonia.PoC.csproj" />
     <Project Path="tests/integration/DesktopSystemMonitor.IntegrationTests.csproj" />
   </Folder>
 </Solution>

@@ -1,13 +1,7 @@
 using Microsoft.Win32;
+using DesktopSystemMonitor.Core.Platform;
 
 namespace DesktopSystemMonitor.Windows.Startup;
-
-public interface IStartupRegistry
-{
-    bool IsEnabled(string executablePath);
-    void Enable(string executablePath);
-    void Disable();
-}
 
 /// <summary>
 /// Registers the app under

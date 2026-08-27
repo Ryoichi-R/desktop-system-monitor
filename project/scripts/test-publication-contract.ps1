@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param()
 
+# This is a static contract check. It deliberately does not publish or mutate
+# dist; the real publish smoke is run separately by the release validation.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $rootResolver = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-roots.ps1'
@@ -48,6 +51,7 @@ if (Test-Path -LiteralPath $publishScript -PathType Leaf) {
             '-p:EnableCompressionInSingleFile=false'
             '-p:IncludeAllContentForSelfExtract=false'
             '-p:ContinuousIntegrationBuild=true'
+            '--framework'
             '--artifacts-path'
         )) {
         if ($publishText -notmatch [regex]::Escape($property) -and $publishContractText -notmatch [regex]::Escape($property)) {

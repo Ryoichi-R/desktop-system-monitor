@@ -10,12 +10,6 @@ namespace DesktopSystemMonitor.Windows.Power;
 /// application sampling loop only reads the latest immutable snapshot, so a
 /// slow hardware driver cannot delay the basic CPU/GPU/network metrics.
 /// </summary>
-public interface IPowerMetricSource : IMetricSource<PowerSnapshot>
-{
-    void PausePolling();
-    void ResumePolling();
-}
-
 public sealed class HardwarePowerMetricSource : IPowerMetricSource, IMetricSource<TemperatureSnapshot>
 {
     private static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(1);

@@ -2,9 +2,11 @@ using System.IO;
 using System.Collections.Immutable;
 using DesktopSystemMonitor.App.Tray;
 using DesktopSystemMonitor.Core.Metrics;
+using DesktopSystemMonitor.Core.Platform;
 using DesktopSystemMonitor.Core.Sampling;
 using DesktopSystemMonitor.Core.Settings;
 using DesktopSystemMonitor.Core.Utility;
+using DesktopSystemMonitor.Windows;
 using DesktopSystemMonitor.Windows.Cpu;
 using DesktopSystemMonitor.Windows.Gpu;
 using DesktopSystemMonitor.Windows.Memory;
@@ -37,6 +39,7 @@ public sealed class AppComposition : IDisposable
 
     private readonly ISettingsStore _settingsStore;
     private readonly IStartupRegistry _startupRegistry;
+    private readonly IMetricSourceFactory _metricSourceFactory;
     private readonly Func<IntPtr, bool> _isForegroundFullScreen;
     private IMetricSource<CpuSnapshot>? _cpu;
     private IMetricSource<MemorySnapshot>? _memory;
@@ -79,17 +82,16 @@ public sealed class AppComposition : IDisposable
     private AppComposition(
         ISettingsStore settingsStore,
         IStartupRegistry startupRegistry,
+        IAppPathProvider appPaths,
+        IMetricSourceFactory metricSourceFactory,
         Func<IntPtr, bool>? isForegroundFullScreen = null)
     {
         _settingsStore = settingsStore;
         _startupRegistry = startupRegistry;
+        _metricSourceFactory = metricSourceFactory;
         _isForegroundFullScreen = isForegroundFullScreen ?? FullScreenDetector.IsForegroundFullScreen;
         _settings = _settingsStore.Load();
-        string logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DesktopSystemMonitor",
-            "logs");
-        _diagnostics = new DiagnosticLog(logDirectory, _settings.DiagnosticLoggingEnabled);
+        _diagnostics = new DiagnosticLog(appPaths.LogDirectory, _settings.DiagnosticLoggingEnabled);
         _batteryChargeState = new BatteryChargeStateCoordinator(
             _settingsStore,
             (category, exception) => _diagnostics.Record(category, exception));
@@ -97,9 +99,11 @@ public sealed class AppComposition : IDisposable
 
     public static AppComposition Create()
     {
-        var settingsStore = new FileSystemSettingsStore(FileSystemSettingsStore.DefaultPath());
+        var appPaths = new WindowsAppPathProvider();
+        var settingsStore = new FileSystemSettingsStore(appPaths.SettingsFilePath);
         var startup = new StartupRegistryService();
-        return new AppComposition(settingsStore, startup);
+        var metricSourceFactory = new WindowsMetricSourceFactory();
+        return new AppComposition(settingsStore, startup, appPaths, metricSourceFactory);
     }
 
     public bool TryClaimSingleInstance()
@@ -134,8 +138,8 @@ public sealed class AppComposition : IDisposable
 
     public void StartMainWindow()
     {
-        _cpu = CreateSource<CpuSnapshot>(() => new CpuMetricSource(), CpuSnapshot.Unavailable);
-        _memory = CreateSource<MemorySnapshot>(() => new MemoryMetricSource(), MemorySnapshot.Unavailable);
+        _cpu = CreateSource(_metricSourceFactory.CreateCpu, CpuSnapshot.Unavailable);
+        _memory = CreateSource(_metricSourceFactory.CreateMemory, MemorySnapshot.Unavailable);
         _gpu = CreateGpuSource();
         _gpu.SetPreferredAdapter(ParseGpuLuid(_settings.PinnedGpuLuidHex));
         _network = CreateNetworkSource();
@@ -867,7 +871,7 @@ public sealed class AppComposition : IDisposable
     {
         try
         {
-            return new GpuMetricSource();
+            return _metricSourceFactory.CreateGpu();
         }
         catch (Exception ex)
         {
@@ -880,7 +884,7 @@ public sealed class AppComposition : IDisposable
     {
         try
         {
-            return new NetworkMetricSource();
+            return _metricSourceFactory.CreateNetwork();
         }
         catch (Exception ex)
         {
@@ -893,7 +897,7 @@ public sealed class AppComposition : IDisposable
     {
         try
         {
-            return new HardwarePowerMetricSource(
+            return _metricSourceFactory.CreatePower(
                 (stage, exception) => _diagnostics.Record(stage, exception));
         }
         catch (Exception ex)
@@ -905,7 +909,7 @@ public sealed class AppComposition : IDisposable
 
     private IDiskMetricSource CreateDiskSource()
     {
-        try { return new DiskMetricSource(); }
+        try { return _metricSourceFactory.CreateDisk(); }
         catch (Exception ex)
         {
             _diagnostics.Record("DiskSnapshot-source-unavailable", ex);
@@ -915,7 +919,7 @@ public sealed class AppComposition : IDisposable
 
     private IBatteryMetricSource CreateBatterySource()
     {
-        try { return new BatteryMetricSource(); }
+        try { return _metricSourceFactory.CreateBattery(); }
         catch (Exception ex)
         {
             _diagnostics.Record("BatterySnapshot-source-unavailable", ex);

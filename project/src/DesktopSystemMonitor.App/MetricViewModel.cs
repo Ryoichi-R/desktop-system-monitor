@@ -33,6 +33,7 @@ public sealed class MetricViewModel : INotifyPropertyChanged
     private double _diskBarFraction;
     private string _batteryPrimary = "--";
     private string _batterySecondary = "--";
+    private string _batteryFlowMarker = string.Empty;
     private string _networkPeakRx = BytesPerSecondFormatter.WarmingUp;
     private string _networkPeakTx = BytesPerSecondFormatter.WarmingUp;
     private string _networkPeakLabel = "60s max";
@@ -143,6 +144,7 @@ public sealed class MetricViewModel : INotifyPropertyChanged
     public double DiskBarFraction { get => _diskBarFraction; set => Set(ref _diskBarFraction, value); }
     public string BatteryPrimary { get => _batteryPrimary; set => Set(ref _batteryPrimary, value); }
     public string BatterySecondary { get => _batterySecondary; set => Set(ref _batterySecondary, value); }
+    public string BatteryFlowMarker { get => _batteryFlowMarker; set => Set(ref _batteryFlowMarker, value); }
     public string NetworkPeakRx { get => _networkPeakRx; set => Set(ref _networkPeakRx, value); }
     public string NetworkPeakTx { get => _networkPeakTx; set => Set(ref _networkPeakTx, value); }
     public string NetworkPeakLabel { get => _networkPeakLabel; set => Set(ref _networkPeakLabel, value); }
@@ -269,10 +271,16 @@ public sealed class MetricViewModel : INotifyPropertyChanged
             battery,
             targetPercent);
         string percent = double.IsFinite(battery.Percent) ? $"{battery.Percent:F0}%" : "N/A";
+        BatteryFlowMarker = battery.PowerState switch
+        {
+            BatteryPowerState.Charging => "→\u200A🔋",
+            BatteryPowerState.Discharging => "🔋\u200A→",
+            _ => string.Empty,
+        };
         switch (battery.PowerState)
         {
             case BatteryPowerState.Discharging:
-                BatteryPrimary = estimate.Remaining is { } remaining ? DurationFormatter.FormatApproximate(remaining) : "残り N/A";
+                BatteryPrimary = estimate.Remaining is { } remaining ? FormatBatteryDuration(remaining) : "残り N/A";
                 BatterySecondary = double.IsFinite(estimate.SmoothedDischargeMilliwatts)
                     ? $"{percent} · {PowerFormatter.FormatWatts(estimate.SmoothedDischargeMilliwatts / 1000d)}"
                     : $"{percent} · N/A W";
@@ -282,7 +290,7 @@ public sealed class MetricViewModel : INotifyPropertyChanged
                     Math.Round(battery.Percent, MidpointRounding.AwayFromZero) >= targetPercent;
                 BatteryPrimary = !targetOrAbove &&
                     chargeEstimate.Status == MetricStatus.Ok && chargeEstimate.Remaining is { } chargeRemaining
-                    ? DurationFormatter.FormatApproximate(chargeRemaining)
+                    ? FormatBatteryDuration(chargeRemaining)
                     : "充電中";
                 double? chargePower = chargeEstimate.Status == MetricStatus.Ok
                     ? chargeEstimate.SmoothedChargeMilliwatts
@@ -316,6 +324,9 @@ public sealed class MetricViewModel : INotifyPropertyChanged
                 break;
         }
     }
+
+    private static string FormatBatteryDuration(TimeSpan duration) =>
+        DurationFormatter.FormatApproximate(duration).TrimStart('≈');
 
     private void ApplyPeaks(
         MetricSnapshot snapshot,

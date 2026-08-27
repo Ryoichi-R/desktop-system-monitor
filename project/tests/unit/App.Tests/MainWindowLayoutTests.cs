@@ -173,6 +173,7 @@ public sealed class MainWindowLayoutTests
         Assert.Contains("{Binding NetworkPeakTx}", reducedBindings);
         Assert.Contains("{Binding NetworkPeakLabel}", reducedBindings);
         Assert.DoesNotContain("{Binding BatterySecondary}", reducedBindings);
+        Assert.Contains("{Binding BatteryFlowMarker}", reducedBindings);
 
         XElement rx = FindNamedElement(reduced, "TextBlock", "ReducedNetworkReceiveRate");
         XElement tx = FindNamedElement(reduced, "TextBlock", "ReducedNetworkSendRate");

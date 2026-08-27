@@ -350,8 +350,9 @@ public sealed class MetricViewModelTests
                 settings);
         }
 
-        Assert.Equal("≈4h 0m", viewModel.BatteryPrimary);
+        Assert.Equal("4h 0m", viewModel.BatteryPrimary);
         Assert.Equal("63% · 8.0 W", viewModel.BatterySecondary);
+        Assert.Equal("🔋\u200A→", viewModel.BatteryFlowMarker);
     }
 
     [Fact]
@@ -383,12 +384,13 @@ public sealed class MetricViewModelTests
                 settings);
         }
 
-        Assert.Equal("≈1h 30m", viewModel.BatteryPrimary);
+        Assert.Equal("1h 30m", viewModel.BatteryPrimary);
         Assert.Contains("50%", viewModel.BatterySecondary, StringComparison.Ordinal);
         Assert.Contains("80%", viewModel.BatterySecondary, StringComparison.Ordinal);
         Assert.Contains("12.0", viewModel.BatterySecondary, StringComparison.Ordinal);
         Assert.DoesNotContain("1m", viewModel.BatteryPrimary, StringComparison.Ordinal);
         Assert.True(BatteryDisplayFormatter.Fits(viewModel.BatterySecondary, settings.FontFamilyName));
+        Assert.Equal("→\u200A🔋", viewModel.BatteryFlowMarker);
     }
 
     [Fact]

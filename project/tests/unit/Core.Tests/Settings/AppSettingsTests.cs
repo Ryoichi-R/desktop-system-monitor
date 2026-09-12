@@ -71,6 +71,30 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public void placement_ratios_require_complete_finite_work_area_values()
+    {
+        AppSettings valid = new AppSettings
+        {
+            PlacementXRatio = 0.25,
+            PlacementYRatio = 0.75,
+            SavedWorkAreaWidthDip = 1400,
+            SavedWorkAreaHeightDip = 900,
+        }.Normalized();
+
+        Assert.Equal(0.25, valid.PlacementXRatio);
+        Assert.Equal(0.75, valid.PlacementYRatio);
+        Assert.Equal(1400, valid.SavedWorkAreaWidthDip);
+        Assert.Equal(900, valid.SavedWorkAreaHeightDip);
+
+        AppSettings invalid = (valid with { PlacementXRatio = double.NaN }).Normalized();
+
+        Assert.Null(invalid.PlacementXRatio);
+        Assert.Null(invalid.PlacementYRatio);
+        Assert.Null(invalid.SavedWorkAreaWidthDip);
+        Assert.Null(invalid.SavedWorkAreaHeightDip);
+    }
+
+    [Fact]
     public void unknown_display_mode_is_normalized_to_standard()
     {
         AppSettings settings = new AppSettings { DisplayMode = (WidgetDisplayMode)999 }.Normalized();

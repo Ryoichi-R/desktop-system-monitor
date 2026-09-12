@@ -56,6 +56,12 @@ public sealed class WindowPlacementControllerTests
         Assert.Equal(WindowPlacementMode.Custom, settings.Value.PlacementMode);
         Assert.Equal(680, settings.Value.SavedRightEdgeDip);
         Assert.Equal(250, settings.Value.SavedTopEdgeDip);
+        Assert.NotNull(settings.Value.PlacementXRatio);
+        Assert.NotNull(settings.Value.PlacementYRatio);
+        Assert.Equal((400 - WindowAnchor.Margin) / (1920 - 280 - (2 * WindowAnchor.Margin)), settings.Value.PlacementXRatio!.Value, 6);
+        Assert.Equal((250 - WindowAnchor.Margin) / (1080 - 200 - (2 * WindowAnchor.Margin)), settings.Value.PlacementYRatio!.Value, 6);
+        Assert.Equal(1920, settings.Value.SavedWorkAreaWidthDip);
+        Assert.Equal(1080, settings.Value.SavedWorkAreaHeightDip);
     }
 
     [Fact]
@@ -220,6 +226,156 @@ public sealed class WindowPlacementControllerTests
     }
 
     [Fact]
+    public void migrated_custom_ratio_commits_on_drag_not_startup()
+    {
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                SchemaVersion = 4,
+                SavedMonitorDeviceName = "DISPLAY1",
+                SavedRightEdgeDip = 1392,
+                SavedTopEdgeDip = 8,
+                PlacementMode = WindowPlacementMode.Custom,
+            },
+        };
+        MonitorLayout landscape = SingleMonitor(1400, 900);
+        var surface = new FakeSurface();
+        using WindowPlacementController controller = CreateController(surface, () => landscape, settings);
+
+        controller.PositionWindow();
+
+        Assert.Equal(0, settings.UpdateCount);
+        Assert.Null(settings.Value.PlacementXRatio);
+        Assert.Null(settings.Value.SavedWorkAreaWidthDip);
+
+        surface.RaiseUserMoveStarted();
+        surface.Left = landscape.Primary.WorkArea.Right - surface.Width - WindowAnchor.Margin;
+        surface.Top = WindowAnchor.Margin;
+        surface.RaiseUserMoveCompleted();
+        controller.FlushPendingWindowPosition();
+
+        Assert.Equal(WindowPlacementMode.Custom, settings.Value.PlacementMode);
+        Assert.Equal(1, settings.Value.PlacementXRatio);
+        Assert.Equal(0, settings.Value.PlacementYRatio);
+        Assert.Equal(1400, settings.Value.SavedWorkAreaWidthDip);
+        Assert.Equal(900, settings.Value.SavedWorkAreaHeightDip);
+
+        MonitorLayout portrait = SingleMonitor(900, 1400);
+        var restartedSurface = new FakeSurface();
+        using WindowPlacementController restartedController = CreateController(
+            restartedSurface,
+            () => portrait,
+            settings);
+
+        restartedController.PositionWindow();
+
+        Assert.Equal(900 - restartedSurface.Width - WindowAnchor.Margin, restartedSurface.Left);
+        Assert.Equal(WindowAnchor.Margin, restartedSurface.Top);
+    }
+
+    [Fact]
+    public void reflow_persist_keeps_ratio_and_updates_absolute_edges()
+    {
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                SavedMonitorDeviceName = "DISPLAY1",
+                SavedRightEdgeDip = 1392,
+                SavedTopEdgeDip = 8,
+                PlacementMode = WindowPlacementMode.Custom,
+                PlacementXRatio = 1,
+                PlacementYRatio = 0,
+                SavedWorkAreaWidthDip = 1400,
+                SavedWorkAreaHeightDip = 900,
+            }.Normalized(),
+        };
+        MonitorLayout layout = SingleMonitor(1400, 900);
+        var surface = new FakeSurface();
+        var reflowTimer = new FakeTimer();
+        using WindowPlacementController controller = CreateController(
+            surface,
+            () => layout,
+            settings,
+            displayReflowTimer: reflowTimer);
+        controller.PositionWindow();
+        layout = SingleMonitor(900, 1400);
+
+        surface.RaiseDisplayConfigurationChanged();
+        controller.CompletePendingDisplayReflow();
+
+        Assert.Equal(1, settings.Value.PlacementXRatio);
+        Assert.Equal(0, settings.Value.PlacementYRatio);
+        Assert.Equal(900, settings.Value.SavedWorkAreaWidthDip);
+        Assert.Equal(1400, settings.Value.SavedWorkAreaHeightDip);
+        Assert.Equal(900 - surface.Width - WindowAnchor.Margin, surface.Left);
+        Assert.Equal(WindowAnchor.Margin, surface.Top);
+        Assert.Equal(surface.Left + surface.Width, settings.Value.SavedRightEdgeDip);
+    }
+
+    [Fact]
+    public void preset_mode_reflow_uses_anchor_not_intent()
+    {
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Preset,
+                PlacementAnchor = WindowPlacementAnchor.TopRight,
+                HorizontalMarginDip = 24,
+                VerticalMarginDip = 24,
+            }.Normalized(),
+        };
+        MonitorLayout layout = SingleMonitor(1400, 900);
+        var surface = new FakeSurface();
+        var reflowTimer = new FakeTimer();
+        using WindowPlacementController controller = CreateController(
+            surface,
+            () => layout,
+            settings,
+            displayReflowTimer: reflowTimer);
+        controller.PositionWindow();
+        layout = SingleMonitor(900, 1400);
+
+        surface.RaiseDisplayConfigurationChanged();
+        controller.CompletePendingDisplayReflow();
+
+        Assert.Equal(900 - surface.Width - 24, surface.Left);
+        Assert.Equal(24, surface.Top);
+        Assert.Equal(1, settings.UpdateCount);
+        Assert.Null(settings.Value.PlacementXRatio);
+        Assert.Null(settings.Value.SavedWorkAreaWidthDip);
+    }
+
+    [Fact]
+    public void capture_failure_clears_ratio_fields()
+    {
+        var tiny = new MonitorInfo("DISPLAY1", new Rect(0, 0, 100, 100), 96);
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Custom,
+                PlacementXRatio = 0.5,
+                PlacementYRatio = 0.5,
+                SavedWorkAreaWidthDip = 1000,
+                SavedWorkAreaHeightDip = 1000,
+            }.Normalized(),
+        };
+        MonitorLayout layout = new([tiny], tiny);
+        var surface = new FakeSurface();
+        using WindowPlacementController controller = CreateController(surface, () => layout, settings);
+
+        controller.PersistWindowPosition();
+
+        Assert.Null(settings.Value.PlacementXRatio);
+        Assert.Null(settings.Value.PlacementYRatio);
+        Assert.Null(settings.Value.SavedWorkAreaWidthDip);
+        Assert.Null(settings.Value.SavedWorkAreaHeightDip);
+    }
+
+    [Fact]
     public void shutdown_flushes_a_pending_stable_move_and_stops_timers()
     {
         var settings = new SettingsHolder();
@@ -242,6 +398,75 @@ public sealed class WindowPlacementControllerTests
         Assert.False(persistTimer.IsEnabled);
         Assert.False(reflowTimer.IsEnabled);
         Assert.Equal(380, settings.Value.SavedRightEdgeDip);
+    }
+
+    [Theory]
+    [InlineData(1.0, 0.0)]
+    [InlineData(0.35, 0.6)]
+    public void migrated_json_drag_reflow_and_restart_preserve_placement(double xRatio, double yRatio)
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsm-placement-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        string path = System.IO.Path.Combine(directory, "settings.json");
+        try
+        {
+            const string legacy = """{"SchemaVersion":4,"PlacementMode":"Custom","SavedMonitorDeviceName":"DISPLAY1","SavedRightEdgeDip":711.43,"SavedTopEdgeDip":8,"FuturePlacementNote":"keep"}""";
+            System.IO.File.WriteAllText(path, legacy);
+            var store = new FileSystemSettingsStore(path);
+            var settings = new SettingsHolder { Value = store.Load() };
+            Assert.Equal(5, settings.Value.SchemaVersion);
+            MonitorLayout layout = SingleMonitor(1400, 900);
+            var surface = new FakeSurface();
+            using (WindowPlacementController controller = CreateController(surface, () => layout, settings))
+            {
+                controller.PositionWindow();
+                Assert.Equal(711.43 - surface.Width, surface.Left, 6);
+                Assert.Equal(0, settings.UpdateCount);
+                Assert.Null(settings.Value.PlacementXRatio);
+                Assert.Null(settings.Value.PlacementYRatio);
+                Assert.Null(settings.Value.SavedWorkAreaWidthDip);
+                Assert.Null(settings.Value.SavedWorkAreaHeightDip);
+                Assert.Equal(legacy, System.IO.File.ReadAllText(path));
+
+                surface.RaiseUserMoveStarted();
+                surface.Left = 8 + (1400 - surface.Width - 16) * xRatio;
+                surface.Top = 8 + (900 - surface.Height - 16) * yRatio;
+                surface.RaiseUserMoveCompleted();
+                controller.FlushPendingWindowPosition();
+                store.Save(settings.Value);
+                settings.Value = new FileSystemSettingsStore(path).Load();
+                Assert.Equal(WindowPlacementMode.Custom, settings.Value.PlacementMode);
+                Assert.Equal(xRatio, settings.Value.PlacementXRatio!.Value, 6);
+                Assert.Equal(yRatio, settings.Value.PlacementYRatio!.Value, 6);
+                Assert.Equal(1400, settings.Value.SavedWorkAreaWidthDip);
+                Assert.Equal(900, settings.Value.SavedWorkAreaHeightDip);
+
+                layout = SingleMonitor(900, 1400);
+                surface.RaiseDisplayConfigurationChanged();
+                controller.CompletePendingDisplayReflow();
+                Assert.Equal(8 + (900 - surface.Width - 16) * xRatio, surface.Left, 6);
+                Assert.Equal(8 + (1400 - surface.Height - 16) * yRatio, surface.Top, 6);
+                store.Save(settings.Value);
+            }
+            var restarted = new SettingsHolder { Value = new FileSystemSettingsStore(path).Load() };
+            Assert.Equal(900, restarted.Value.SavedWorkAreaWidthDip);
+            Assert.Equal(1400, restarted.Value.SavedWorkAreaHeightDip);
+            Assert.Equal(xRatio, restarted.Value.PlacementXRatio!.Value, 6);
+            Assert.Equal(yRatio, restarted.Value.PlacementYRatio!.Value, 6);
+            layout = SingleMonitor(1400, 900);
+            var restartedSurface = new FakeSurface();
+            using WindowPlacementController restartedController = CreateController(restartedSurface, () => layout, restarted);
+            restartedController.PositionWindow();
+            Assert.Equal(8 + (1400 - restartedSurface.Width - 16) * xRatio, restartedSurface.Left, 6);
+            Assert.Equal(8 + (900 - restartedSurface.Height - 16) * yRatio, restartedSurface.Top, 6);
+            Assert.Equal(0, restarted.UpdateCount);
+            using var document = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(path));
+            Assert.Equal("keep", document.RootElement.GetProperty("FuturePlacementNote").GetString());
+        }
+        finally
+        {
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static WindowPlacementController CreateController(

@@ -245,6 +245,18 @@ public partial class SettingsWindow : Window
             SavedMonitorDpi = _placementSettings.PlacementMode == WindowPlacementMode.Custom
                 ? _placementSettings.SavedMonitorDpi
                 : null,
+            PlacementXRatio = _placementSettings.PlacementMode == WindowPlacementMode.Custom
+                ? _placementSettings.PlacementXRatio
+                : null,
+            PlacementYRatio = _placementSettings.PlacementMode == WindowPlacementMode.Custom
+                ? _placementSettings.PlacementYRatio
+                : null,
+            SavedWorkAreaWidthDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
+                ? _placementSettings.SavedWorkAreaWidthDip
+                : null,
+            SavedWorkAreaHeightDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
+                ? _placementSettings.SavedWorkAreaHeightDip
+                : null,
             PlacementMode = _placementSettings.PlacementMode,
             PlacementAnchor = (PlacementAnchorBox.SelectedItem as PlacementAnchorChoice)?.Value
                 ?? WindowPlacementAnchor.TopRight,
@@ -291,6 +303,10 @@ public partial class SettingsWindow : Window
             PlacementAnchor = WindowPlacementAnchor.TopRight,
             HorizontalMarginDip = 8,
             VerticalMarginDip = 8,
+            PlacementXRatio = null,
+            PlacementYRatio = null,
+            SavedWorkAreaWidthDip = null,
+            SavedWorkAreaHeightDip = null,
         };
         _initializingPlacement = true;
         MonitorBox.SelectedIndex = 0;

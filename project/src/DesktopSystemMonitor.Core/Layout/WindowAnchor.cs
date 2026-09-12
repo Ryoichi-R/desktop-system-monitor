@@ -25,7 +25,11 @@ public static class WindowAnchor
         WindowPlacementMode placementMode = WindowPlacementMode.Custom,
         WindowPlacementAnchor placementAnchor = WindowPlacementAnchor.TopRight,
         double horizontalMargin = Margin,
-        double verticalMargin = Margin)
+        double verticalMargin = Margin,
+        double? savedWorkAreaWidth = null,
+        double? savedWorkAreaHeight = null,
+        double? savedXRatio = null,
+        double? savedYRatio = null)
     {
         ArgumentNullException.ThrowIfNull(monitors);
         ArgumentNullException.ThrowIfNull(primary);
@@ -50,16 +54,48 @@ public static class WindowAnchor
         bool preset = placementMode == WindowPlacementMode.Preset;
         bool rightAnchored = placementAnchor is WindowPlacementAnchor.TopRight or WindowPlacementAnchor.BottomRight;
         bool bottomAnchored = placementAnchor is WindowPlacementAnchor.BottomLeft or WindowPlacementAnchor.BottomRight;
-        double left = preset
-            ? rightAnchored
+        double left;
+        double top;
+        if (preset)
+        {
+            left = rightAnchored
                 ? target.WorkArea.Right - widgetWidth - horizontalMargin
-                : target.WorkArea.Left + horizontalMargin
-            : (savedRightEdge ?? (target.WorkArea.Right - Margin)) - widgetWidth;
-        double top = preset
-            ? bottomAnchored
+                : target.WorkArea.Left + horizontalMargin;
+            top = bottomAnchored
                 ? target.WorkArea.Bottom - widgetHeight - verticalMargin
-                : target.WorkArea.Top + verticalMargin
-            : savedTopEdge ?? (target.WorkArea.Top + Margin);
+                : target.WorkArea.Top + verticalMargin;
+        }
+        else if (ShouldUseSavedRatio(
+            target.WorkArea,
+            savedWorkAreaWidth,
+            savedWorkAreaHeight,
+            savedXRatio,
+            savedYRatio))
+        {
+            GetMovementBounds(
+                widgetWidth,
+                widgetHeight,
+                target.WorkArea,
+                out double movementMinLeft,
+                out double movementMaxLeft,
+                out double movementMinTop,
+                out double movementMaxTop);
+            if (movementMaxLeft >= movementMinLeft && movementMaxTop >= movementMinTop)
+            {
+                left = movementMinLeft + ((movementMaxLeft - movementMinLeft) * savedXRatio!.Value);
+                top = movementMinTop + ((movementMaxTop - movementMinTop) * savedYRatio!.Value);
+            }
+            else
+            {
+                left = (savedRightEdge ?? (target.WorkArea.Right - Margin)) - widgetWidth;
+                top = savedTopEdge ?? (target.WorkArea.Top + Margin);
+            }
+        }
+        else
+        {
+            left = (savedRightEdge ?? (target.WorkArea.Right - Margin)) - widgetWidth;
+            top = savedTopEdge ?? (target.WorkArea.Top + Margin);
+        }
 
         // Clamp to monitor working area with margin so the widget stays fully
         // visible even when resolution or DPI changed.
@@ -226,6 +262,35 @@ public static class WindowAnchor
         maxLeft = workArea.Right - widgetWidth - Margin;
         minTop = workArea.Top + Margin;
         maxTop = workArea.Bottom - widgetHeight - Margin;
+    }
+
+    private static bool ShouldUseSavedRatio(
+        Rect currentWorkArea,
+        double? savedWorkAreaWidth,
+        double? savedWorkAreaHeight,
+        double? savedXRatio,
+        double? savedYRatio)
+    {
+        if (savedWorkAreaWidth is not { } width
+            || savedWorkAreaHeight is not { } height
+            || savedXRatio is not { } xRatio
+            || savedYRatio is not { } yRatio
+            || !double.IsFinite(width)
+            || !double.IsFinite(height)
+            || width <= 0
+            || height <= 0
+            || !double.IsFinite(xRatio)
+            || !double.IsFinite(yRatio)
+            || xRatio is < 0 or > 1
+            || yRatio is < 0 or > 1
+            || !double.IsFinite(currentWorkArea.Width)
+            || !double.IsFinite(currentWorkArea.Height))
+        {
+            return false;
+        }
+
+        return Math.Abs(currentWorkArea.Width - width) > 0.5
+            || Math.Abs(currentWorkArea.Height - height) > 0.5;
     }
 
     private static bool IsFinitePositive(double value) =>

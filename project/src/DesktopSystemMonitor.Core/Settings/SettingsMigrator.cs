@@ -43,6 +43,7 @@ public static class SettingsMigrator
                 1 => MigrateFromV1(obj),
                 2 => MigrateFromV2(obj),
                 3 => MigrateFromV3(obj),
+                4 => MigrateFromV4(obj),
                 _ => throw new InvalidDataException($"No migration path from schema version {version}."),
             };
         }
@@ -101,6 +102,8 @@ public static class SettingsMigrator
         obj.TryAdd(nameof(AppSettings.DisplayMode), nameof(WidgetDisplayMode.Standard));
         return 4;
     }
+
+    private static int MigrateFromV4(JsonObject obj) => 5;
 
     internal static readonly JsonSerializerOptions SerializerOptions = new()
     {

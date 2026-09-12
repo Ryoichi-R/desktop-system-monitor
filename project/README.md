@@ -230,7 +230,7 @@ dotnet run --project .\src\DesktopSystemMonitor.Diagnostics -- --seconds 120 --g
 - 「デスクトップ上」表示は `HWND_BOTTOM` の再適用で維持している。Explorer 再起動 / Win+D などで最前面へ上がる環境が残る可能性があるため experimental 扱いとする。
 - 常に手前モードの full-screen 自動非表示は、Explorer と同じプロセスに属する `Progman` / `WorkerW` をデスクトップとして除外する。Explorer 再起動後は新しい shell HWND を各判定周期で取得し直すが、再起動中に shell HWND を取得できない数秒間の一過性の点滅は保証外とする。
 - タスクバーを自動的に隠す設定では、最大化した通常ウィンドウがモニター全体を覆い、full-screen と判定される場合がある。タスクバーを常時表示した環境では、タスクバーを覆わない最大化ウィンドウを full-screen と判定しない。
-- 画面回転時の相対配置はメモリ内のplacement intentで維持するため同一プロセス内に限る。縦向きでアプリを終了・再起動してから横向きへ戻した場合は、縦向きで保存された位置を基準に新しい相対配置を作る。過去orientationの位置を設定schemaへ保存して復元する機能はない。
+- 画面回転時は、`Custom` の配置比率と確定時の作業領域サイズを設定へ保存し、作業領域の大きさが変われば同じ比率へ写像する。同一プロセス内ではメモリ内のplacement intentも使用するため、回転後の再配置と再起動後の復元は同じ相対位置を目指す。`Preset` は常に選択した基準位置と余白を再適用する。schema v4からの移行直後は比率が未確定なので、1回だけ「既定の右上へ戻す」または右上へのドラッグを行って保存する必要がある。
 
 ## ライセンス
 
@@ -240,7 +240,7 @@ Desktop System Monitorの第一者コードは[MIT License](../LICENSE)で提供
 
 `%LOCALAPPDATA%\DesktopSystemMonitor\settings.json`
 
-- `SchemaVersion`: 4
+- `SchemaVersion`: 5
 - 保存対象enumへ値を追加する場合は必ず`SchemaVersion`を上げ、migrationと旧版でのfuture-schema read-only動作を同じ変更に含める。versionを据え置いたまま未知enum文字列を追加すると、旧版は破損設定と区別できないため禁止する。
 - `SamplingIntervalSeconds`: 0.5〜5.0 の範囲でクランプ
 - `UiScalePercent`: 75〜200
@@ -268,6 +268,8 @@ Desktop System Monitorの第一者コードは[MIT License](../LICENSE)で提供
 - `BackgroundFillMode`: `Solid`（単色、既定）または`EdgeFade`（四辺を透明化）
 - `BackgroundEdgeFadePercent`: `EdgeFade`で情報領域の左右へそれぞれ追加する幅と上下へそれぞれ追加する高さ（情報領域寸法の5～50%、既定22%）
 - `HideBackgroundBehindWindows`: `AlwaysOnTop`時だけ背景をBottomMostへ分離する希望値。`Normal` / `OnDesktop`中も保存値は保持する
+- `PlacementXRatio` / `PlacementYRatio`: `Custom` で確定した作業領域内の可動範囲に対する水平・垂直比率（0～1）。`SavedWorkAreaWidthDip` / `SavedWorkAreaHeightDip` と4値が揃う場合だけ有効。作業領域サイズが変わった起動・回転時に相対位置の復元へ使用する
+- `SavedWorkAreaWidthDip` / `SavedWorkAreaHeightDip`: 上記比率を確定した時点の作業領域サイズ（DIP）。`Preset` または比率未確定時は`null`
 - `Opacity`: 旧ウィンドウ全体opacityとの互換性のためJSONに保持するが、描画には使用しない
 - `AutoHideOnFullScreen`: 常に手前モードのfull-screen自動非表示
 - `DiagnosticLoggingEnabled`: `%LOCALAPPDATA%\DesktopSystemMonitor\logs` への制限付きログ。有効時は自動非表示の開始・終了を `fullscreen-auto-hide-enter` / `fullscreen-auto-hide-exit`、sampling停止・再開を `sampling-suspend-enter` / `sampling-suspend-exit` として記録する（ウィンドウ名・クラス名・PIDは記録しない）
@@ -286,3 +288,7 @@ Desktop System Monitorの第一者コードは[MIT License](../LICENSE)で提供
 4. 設定と診断ログも不要な場合だけ、`%LOCALAPPDATA%\DesktopSystemMonitor`を削除する。
 
 portableバイナリを削除しても設定と診断ログは自動削除されない。ローカルデータの内容は[`PRIVACY.md`](PRIVACY.md)を参照する。
+
+### 画面回転の比率保証範囲
+
+比率の不変性は、ウィジェットと両側8 DIP余白を除いた可動範囲が両軸とも正の場合に限ります。可動範囲が0の軸は再captureで比率0となり、負の場合は比率・作業領域サイズ4値が消去されます。この状態で保存して再起動した場合、元の相対意図の復元は保証しません。位置リセットを保存するとPreset、ドラッグ完了を保存するとCustomになります。起動だけでは未確定比率を保存しません。

@@ -52,14 +52,14 @@ public class SettingsMigratorTests
 
         JsonNode migrated = SettingsMigrator.Migrate(node);
 
-        Assert.Equal(4, migrated["SchemaVersion"]!.GetValue<int>());
+        Assert.Equal(5, migrated["SchemaVersion"]!.GetValue<int>());
         Assert.Equal(nameof(BackgroundFillMode.Solid), migrated["BackgroundFillMode"]!.GetValue<string>());
         Assert.Equal(22, migrated["BackgroundEdgeFadePercent"]!.GetValue<int>());
         Assert.Equal("#80112233", migrated["BackgroundColor"]!.GetValue<string>());
     }
 
     [Fact]
-    public void schema_four_serialized_enum_vocabulary_is_explicit()
+    public void schema_five_serialized_enum_vocabulary_is_explicit()
     {
         var expected = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
@@ -87,7 +87,7 @@ public class SettingsMigratorTests
         {
             Assert.Equal(vocabulary, actual[property]);
         }
-        Assert.Equal(4, AppSettings.CurrentSchemaVersion);
+        Assert.Equal(5, AppSettings.CurrentSchemaVersion);
         Assert.Equal(Enum.GetNames<RateUnitSystem>(), expected[nameof(AppSettings.NetworkUnitSystem)]);
     }
 
@@ -100,7 +100,7 @@ public class SettingsMigratorTests
     {
         JsonNode migrated = SettingsMigrator.Migrate(JsonNode.Parse(json)!);
 
-        Assert.Equal(4, migrated["SchemaVersion"]!.GetValue<int>());
+        Assert.Equal(5, migrated["SchemaVersion"]!.GetValue<int>());
         Assert.Equal(expectedMode.ToString(), migrated["PlacementMode"]!.GetValue<string>());
         Assert.Equal(nameof(WindowPlacementAnchor.TopRight), migrated["PlacementAnchor"]!.GetValue<string>());
         Assert.Equal(8, migrated["HorizontalMarginDip"]!.GetValue<int>());
@@ -112,7 +112,7 @@ public class SettingsMigratorTests
     {
         JsonNode migrated = SettingsMigrator.Migrate(JsonNode.Parse("{ \"SchemaVersion\": 3, \"FutureOption\": true }")!);
 
-        Assert.Equal(4, migrated["SchemaVersion"]!.GetValue<int>());
+        Assert.Equal(5, migrated["SchemaVersion"]!.GetValue<int>());
         Assert.Equal(nameof(WidgetDisplayMode.Standard), migrated["DisplayMode"]!.GetValue<string>());
         Assert.True(migrated["FutureOption"]!.GetValue<bool>());
     }
@@ -122,10 +122,25 @@ public class SettingsMigratorTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
     public void every_previous_schema_version_reaches_current_schema(int version)
     {
         JsonNode migrated = SettingsMigrator.Migrate(JsonNode.Parse($"{{ \"SchemaVersion\": {version} }}")!);
 
         Assert.Equal(AppSettings.CurrentSchemaVersion, migrated["SchemaVersion"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void v4_document_upgrades_without_inventing_placement_ratios()
+    {
+        JsonNode migrated = SettingsMigrator.Migrate(JsonNode.Parse(
+            """{ "SchemaVersion": 4, "SavedRightEdgeDip": 1234, "SavedTopEdgeDip": 44, "FutureOption": true }""")!);
+
+        Assert.Equal(5, migrated["SchemaVersion"]!.GetValue<int>());
+        Assert.Null(migrated["PlacementXRatio"]);
+        Assert.Null(migrated["PlacementYRatio"]);
+        Assert.Null(migrated["SavedWorkAreaWidthDip"]);
+        Assert.Null(migrated["SavedWorkAreaHeightDip"]);
+        Assert.True(migrated["FutureOption"]!.GetValue<bool>());
     }
 }

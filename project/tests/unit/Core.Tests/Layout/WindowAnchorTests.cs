@@ -66,6 +66,120 @@ public class WindowAnchorTests
     }
 
     [Fact]
+    public void custom_position_reflows_by_ratio_when_work_area_size_changed()
+    {
+        var portrait = new MonitorInfo("DISPLAY1", new Rect(0, 0, 900, 1400), 192);
+
+        Rect rect = WindowAnchor.Compute(
+            widgetWidth: 280,
+            widgetHeight: 220,
+            monitors: [portrait],
+            primary: portrait,
+            savedDeviceName: "DISPLAY1",
+            savedRightEdge: 1392,
+            savedTopEdge: 8,
+            placementMode: WindowPlacementMode.Custom,
+            placementAnchor: WindowPlacementAnchor.TopRight,
+            horizontalMargin: 8,
+            verticalMargin: 8,
+            savedWorkAreaWidth: 1400,
+            savedWorkAreaHeight: 900,
+            savedXRatio: 1,
+            savedYRatio: 0);
+
+        Assert.Equal(900 - 280 - WindowAnchor.Margin, rect.Left);
+        Assert.Equal(WindowAnchor.Margin, rect.Top);
+    }
+
+    [Fact]
+    public void custom_position_keeps_absolute_edges_when_work_area_unchanged()
+    {
+        MonitorInfo monitor = new("DISPLAY1", new Rect(0, 0, 1400, 900), 192);
+
+        Rect rect = WindowAnchor.Compute(
+            280,
+            220,
+            [monitor],
+            monitor,
+            "DISPLAY1",
+            1234,
+            44,
+            WindowPlacementMode.Custom,
+            WindowPlacementAnchor.TopRight,
+            WindowAnchor.Margin,
+            WindowAnchor.Margin,
+            1400,
+            900,
+            0.95,
+            0.1);
+
+        Assert.Equal(954, rect.Left);
+        Assert.Equal(44, rect.Top);
+    }
+
+    [Fact]
+    public void landscape_portrait_landscape_round_trip_through_settings()
+    {
+        MonitorInfo landscape = new("DISPLAY1", new Rect(0, 0, 1400, 900), 192);
+        MonitorInfo portrait = new("DISPLAY1", new Rect(0, 0, 900, 1400), 192);
+        AppSettings persisted = new AppSettings
+        {
+            SavedMonitorDeviceName = landscape.DeviceName,
+            SavedRightEdgeDip = landscape.WorkArea.Right - WindowAnchor.Margin,
+            SavedTopEdgeDip = WindowAnchor.Margin,
+            PlacementMode = WindowPlacementMode.Custom,
+            PlacementXRatio = 1,
+            PlacementYRatio = 0,
+            SavedWorkAreaWidthDip = landscape.WorkArea.Width,
+            SavedWorkAreaHeightDip = landscape.WorkArea.Height,
+        }.Normalized();
+
+        Rect rotated = ComputeWithSettings(280, 220, [portrait], portrait, persisted);
+        AppSettings persistedAfterRotation = (persisted with
+        {
+            SavedRightEdgeDip = rotated.Right,
+            SavedTopEdgeDip = rotated.Top,
+            SavedWorkAreaWidthDip = portrait.WorkArea.Width,
+            SavedWorkAreaHeightDip = portrait.WorkArea.Height,
+        }).Normalized();
+        Rect restored = ComputeWithSettings(280, 220, [landscape], landscape, persistedAfterRotation);
+
+        Assert.Equal(portrait.WorkArea.Right - 280 - WindowAnchor.Margin, rotated.Left);
+        Assert.Equal(landscape.WorkArea.Right - 280 - WindowAnchor.Margin, restored.Left);
+        Assert.Equal(WindowAnchor.Margin, restored.Top);
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 0.5)]
+    [InlineData(-0.1, 0.5)]
+    [InlineData(0.5, 1.1)]
+    [InlineData(null, 0.5)]
+    public void invalid_saved_ratio_falls_back_to_absolute_edges(double? xRatio, double? yRatio)
+    {
+        MonitorInfo monitor = new("DISPLAY1", new Rect(0, 0, 1400, 900), 192);
+
+        Rect rect = WindowAnchor.Compute(
+            280,
+            220,
+            [monitor],
+            monitor,
+            "DISPLAY1",
+            1000,
+            100,
+            WindowPlacementMode.Custom,
+            WindowPlacementAnchor.TopRight,
+            WindowAnchor.Margin,
+            WindowAnchor.Margin,
+            1200,
+            800,
+            xRatio,
+            yRatio);
+
+        Assert.Equal(720, rect.Left);
+        Assert.Equal(100, rect.Top);
+    }
+
+    [Fact]
     public void saved_position_off_screen_is_clamped_back_into_working_area()
     {
         // Saved position would place the widget entirely to the right of a
@@ -228,4 +342,26 @@ public class WindowAnchorTests
             tiny,
             out _));
     }
+
+    private static Rect ComputeWithSettings(
+        double widgetWidth,
+        double widgetHeight,
+        IReadOnlyList<MonitorInfo> monitors,
+        MonitorInfo primary,
+        AppSettings settings) => WindowAnchor.Compute(
+            widgetWidth,
+            widgetHeight,
+            monitors,
+            primary,
+            settings.SavedMonitorDeviceName,
+            settings.SavedRightEdgeDip,
+            settings.SavedTopEdgeDip,
+            settings.PlacementMode,
+            settings.PlacementAnchor,
+            settings.HorizontalMarginDip,
+            settings.VerticalMarginDip,
+            settings.SavedWorkAreaWidthDip,
+            settings.SavedWorkAreaHeightDip,
+            settings.PlacementXRatio,
+            settings.PlacementYRatio);
 }

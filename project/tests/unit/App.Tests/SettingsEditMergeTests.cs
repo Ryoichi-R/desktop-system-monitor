@@ -128,4 +128,49 @@ public sealed class SettingsEditMergeTests
         Assert.Null(savedWithReset.BatteryChargeTargetCandidatePercent);
         Assert.Equal(90, savedWithReset.BatteryChargeTargetPercent);
     }
+
+    [Fact]
+    public void reset_position_clears_custom_ratio_and_absolute_position_fields()
+    {
+        AppSettings current = new AppSettings
+        {
+            SavedMonitorDeviceName = "DISPLAY1",
+            SavedRightEdgeDip = 1392,
+            SavedTopEdgeDip = 8,
+            SavedMonitorDpi = 192,
+            PlacementMode = WindowPlacementMode.Custom,
+            PlacementXRatio = 1,
+            PlacementYRatio = 0,
+            SavedWorkAreaWidthDip = 1400,
+            SavedWorkAreaHeightDip = 900,
+        }.Normalized();
+        SettingsDraft reset = SettingsDraft.FromSettings(current) with
+        {
+            SavedMonitorDeviceName = null,
+            SavedRightEdgeDip = null,
+            SavedTopEdgeDip = null,
+            SavedMonitorDpi = null,
+            PlacementXRatio = null,
+            PlacementYRatio = null,
+            SavedWorkAreaWidthDip = null,
+            SavedWorkAreaHeightDip = null,
+            PlacementMode = WindowPlacementMode.Preset,
+            PlacementAnchor = WindowPlacementAnchor.TopRight,
+            HorizontalMarginDip = 8,
+            VerticalMarginDip = 8,
+        };
+
+        AppSettings saved = SettingsEditMerge.Merge(current, reset);
+
+        Assert.Equal(WindowPlacementMode.Preset, saved.PlacementMode);
+        Assert.Equal(WindowPlacementAnchor.TopRight, saved.PlacementAnchor);
+        Assert.Null(saved.SavedMonitorDeviceName);
+        Assert.Null(saved.SavedRightEdgeDip);
+        Assert.Null(saved.SavedTopEdgeDip);
+        Assert.Null(saved.SavedMonitorDpi);
+        Assert.Null(saved.PlacementXRatio);
+        Assert.Null(saved.PlacementYRatio);
+        Assert.Null(saved.SavedWorkAreaWidthDip);
+        Assert.Null(saved.SavedWorkAreaHeightDip);
+    }
 }

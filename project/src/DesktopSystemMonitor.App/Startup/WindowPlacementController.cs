@@ -116,7 +116,11 @@ internal sealed class WindowPlacementController : IDisposable
             settings.PlacementMode,
             settings.PlacementAnchor,
             settings.HorizontalMarginDip,
-            settings.VerticalMarginDip);
+            settings.VerticalMarginDip,
+            settings.SavedWorkAreaWidthDip,
+            settings.SavedWorkAreaHeightDip,
+            settings.PlacementXRatio,
+            settings.PlacementYRatio);
         ApplyWindowRect(rect);
         UpdateDisplaySnapshot(layout.All, layout.Primary, rect);
         CapturePlacementIntent(rect, layout.All, layout.Primary);
@@ -167,6 +171,7 @@ internal sealed class WindowPlacementController : IDisposable
             : new MonitorLayout(knownMonitors, knownPrimary);
         Rect widget = CurrentWindowRect();
         MonitorInfo monitor = WindowAnchor.FindMonitorForWidget(widget, layout.All, layout.Primary);
+        bool captured = WindowAnchor.TryCaptureIntent(widget, monitor, out WindowPlacementIntent intent);
         UpdateDisplaySnapshot(layout.All, layout.Primary, widget);
         _updateSettings(settings => !markCustom && settings.PlacementMode == WindowPlacementMode.Preset
             ? settings
@@ -176,6 +181,10 @@ internal sealed class WindowPlacementController : IDisposable
                 SavedRightEdgeDip = widget.Right,
                 SavedTopEdgeDip = widget.Top,
                 SavedMonitorDpi = monitor.Dpi,
+                PlacementXRatio = captured ? intent.XRatio : null,
+                PlacementYRatio = captured ? intent.YRatio : null,
+                SavedWorkAreaWidthDip = captured ? monitor.WorkArea.Width : null,
+                SavedWorkAreaHeightDip = captured ? monitor.WorkArea.Height : null,
                 PlacementMode = markCustom ? WindowPlacementMode.Custom : settings.PlacementMode,
             });
     }
@@ -189,12 +198,17 @@ internal sealed class WindowPlacementController : IDisposable
         MonitorLayout layout = _enumerateMonitors();
         Rect widget = CurrentWindowRect();
         MonitorInfo monitor = WindowAnchor.FindMonitorForWidget(widget, layout.All, layout.Primary);
+        bool captured = WindowAnchor.TryCaptureIntent(widget, monitor, out WindowPlacementIntent intent);
         return basis with
         {
             SavedMonitorDeviceName = monitor.DeviceName,
             SavedRightEdgeDip = widget.Right,
             SavedTopEdgeDip = widget.Top,
             SavedMonitorDpi = monitor.Dpi,
+            PlacementXRatio = captured ? intent.XRatio : null,
+            PlacementYRatio = captured ? intent.YRatio : null,
+            SavedWorkAreaWidthDip = captured ? monitor.WorkArea.Width : null,
+            SavedWorkAreaHeightDip = captured ? monitor.WorkArea.Height : null,
             PlacementMode = WindowPlacementMode.Custom,
         };
     }
@@ -302,7 +316,10 @@ internal sealed class WindowPlacementController : IDisposable
         {
             MonitorLayout current = _enumerateMonitors();
             Rect rect;
-            WindowPlacementIntent? placementIntent = ResolvePlacementIntentFromSnapshot();
+            AppSettings settings = _getSettings();
+            WindowPlacementIntent? placementIntent = settings.PlacementMode == WindowPlacementMode.Preset
+                ? null
+                : ResolvePlacementIntentFromSnapshot();
             if (placementIntent is WindowPlacementIntent intent
                 && WindowAnchor.TryComputeFromIntent(
                     _window.Width,
@@ -316,7 +333,6 @@ internal sealed class WindowPlacementController : IDisposable
             }
             else
             {
-                AppSettings settings = _getSettings();
                 rect = WindowAnchor.Compute(
                     _window.Width,
                     _window.Height,
@@ -328,7 +344,11 @@ internal sealed class WindowPlacementController : IDisposable
                     settings.PlacementMode,
                     settings.PlacementAnchor,
                     settings.HorizontalMarginDip,
-                    settings.VerticalMarginDip);
+                    settings.VerticalMarginDip,
+                    settings.SavedWorkAreaWidthDip,
+                    settings.SavedWorkAreaHeightDip,
+                    settings.PlacementXRatio,
+                    settings.PlacementYRatio);
             }
             ApplyWindowRect(rect);
             UpdateDisplaySnapshot(current.All, current.Primary, rect);

@@ -48,7 +48,7 @@ public enum WindowPlacementAnchor
 
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
@@ -110,6 +110,10 @@ public sealed record AppSettings
     public double? SavedRightEdgeDip { get; init; }
     public double? SavedTopEdgeDip { get; init; }
     public double? SavedMonitorDpi { get; init; }
+    public double? PlacementXRatio { get; init; }
+    public double? PlacementYRatio { get; init; }
+    public double? SavedWorkAreaWidthDip { get; init; }
+    public double? SavedWorkAreaHeightDip { get; init; }
     public WindowPlacementMode PlacementMode { get; init; } = WindowPlacementMode.Preset;
     public WindowPlacementAnchor PlacementAnchor { get; init; } = WindowPlacementAnchor.TopRight;
     public double HorizontalMarginDip { get; init; } = 8;
@@ -155,6 +159,36 @@ public sealed record AppSettings
         double verticalMargin = double.IsFinite(VerticalMarginDip)
             ? Math.Clamp(VerticalMarginDip, 0, 200)
             : 8;
+        double? placementXRatio = PlacementXRatio is { } xRatio
+            && double.IsFinite(xRatio)
+            && xRatio is >= 0 and <= 1
+            ? xRatio
+            : null;
+        double? placementYRatio = PlacementYRatio is { } yRatio
+            && double.IsFinite(yRatio)
+            && yRatio is >= 0 and <= 1
+            ? yRatio
+            : null;
+        double? savedWorkAreaWidth = SavedWorkAreaWidthDip is { } width
+            && double.IsFinite(width)
+            && width > 0
+            ? width
+            : null;
+        double? savedWorkAreaHeight = SavedWorkAreaHeightDip is { } height
+            && double.IsFinite(height)
+            && height > 0
+            ? height
+            : null;
+        if (placementXRatio is null
+            || placementYRatio is null
+            || savedWorkAreaWidth is null
+            || savedWorkAreaHeight is null)
+        {
+            placementXRatio = null;
+            placementYRatio = null;
+            savedWorkAreaWidth = null;
+            savedWorkAreaHeight = null;
+        }
         int? manualBatteryTarget = BatteryChargeTargetPercent is >= 50 and <= 100
             ? BatteryChargeTargetPercent
             : null;
@@ -187,6 +221,10 @@ public sealed record AppSettings
             PlacementAnchor = placementAnchor,
             HorizontalMarginDip = horizontalMargin,
             VerticalMarginDip = verticalMargin,
+            PlacementXRatio = placementXRatio,
+            PlacementYRatio = placementYRatio,
+            SavedWorkAreaWidthDip = savedWorkAreaWidth,
+            SavedWorkAreaHeightDip = savedWorkAreaHeight,
             NetworkPeakWindowSeconds = Math.Clamp(NetworkPeakWindowSeconds, 10, 60),
             FontFamilyName = font,
             ForegroundColor = NormalizeColor(ForegroundColor, "#FFF3F3F3"),

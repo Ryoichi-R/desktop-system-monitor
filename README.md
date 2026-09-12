@@ -54,7 +54,7 @@ readinessが未完了の `local-only` payloadは、未検証プレビューで�
 
 ## 設定
 
-設定は `%LOCALAPPDATA%\DesktopSystemMonitor\settings.json` に保存されます（現在の `SchemaVersion` は 4）。
+設定は `%LOCALAPPDATA%\DesktopSystemMonitor\settings.json` に保存されます（現在の `SchemaVersion` は 5）。
 通常はタスクトレイの「設定」から変更し、ファイルを直接編集する必要はありません。
 
 - サンプリング間隔、UIスケール、表示モード（通常／縮小）

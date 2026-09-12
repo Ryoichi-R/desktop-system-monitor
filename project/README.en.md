@@ -42,6 +42,22 @@ architecture while it is marked `BLOCKED`.
 - Self-contained portable builds for validated Windows architectures.
 - Opt-in local diagnostics with rotation and deliberately limited fields.
 
+## Placement and display rotation
+
+In `Custom` mode, a completed drag persists the widget's horizontal and vertical
+placement ratios together with the work-area size used to calculate them. When a
+rotation, display change, or restart presents a different work-area size, the
+widget is mapped to the same relative position and then clamped inside the work
+area. `Preset` mode always reapplies its selected corner and margins. A schema v4
+settings file migrates to schema v5 without inventing a ratio; after that first
+migration, startup alone does not save ratios. Save a position reset to use Preset
+anchoring, or complete a drag to establish Custom ratios before testing recovery.
+Ratio invariance requires a positive movement range on both axes. When the widget
+only just fits, recapture assigns zero on that axis; when it does not fit, all four
+ratio/work-area fields are cleared. Restart recovery cannot preserve the original
+relative intent in these cases. WPF placement is covered by App.Tests; it is not
+included in the line-coverage gate.
+
 ## Build and test
 
 Windows 11, PowerShell 7, and the .NET SDK selected by `global.json` are required.

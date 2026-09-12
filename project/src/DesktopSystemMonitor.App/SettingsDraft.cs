@@ -46,6 +46,10 @@ internal sealed record SettingsDraft
     public required double? SavedRightEdgeDip { get; init; }
     public required double? SavedTopEdgeDip { get; init; }
     public required double? SavedMonitorDpi { get; init; }
+    public required double? PlacementXRatio { get; init; }
+    public required double? PlacementYRatio { get; init; }
+    public required double? SavedWorkAreaWidthDip { get; init; }
+    public required double? SavedWorkAreaHeightDip { get; init; }
     public required WindowPlacementMode PlacementMode { get; init; }
     public required WindowPlacementAnchor PlacementAnchor { get; init; }
     public required double HorizontalMarginDip { get; init; }
@@ -92,6 +96,10 @@ internal sealed record SettingsDraft
         SavedRightEdgeDip = settings.SavedRightEdgeDip,
         SavedTopEdgeDip = settings.SavedTopEdgeDip,
         SavedMonitorDpi = settings.SavedMonitorDpi,
+        PlacementXRatio = settings.PlacementXRatio,
+        PlacementYRatio = settings.PlacementYRatio,
+        SavedWorkAreaWidthDip = settings.SavedWorkAreaWidthDip,
+        SavedWorkAreaHeightDip = settings.SavedWorkAreaHeightDip,
         PlacementMode = settings.PlacementMode,
         PlacementAnchor = settings.PlacementAnchor,
         HorizontalMarginDip = settings.HorizontalMarginDip,

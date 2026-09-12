@@ -263,7 +263,7 @@ public class SettingsStoreTests : IDisposable
     public void future_schema_with_unknown_enum_is_read_only_not_corrupt()
     {
         const string futureJson =
-            """{ "SchemaVersion": 5, "LayerMode": "FutureDesktopLayer", "FutureOption": "keep-me" }""";
+            """{ "SchemaVersion": 42, "LayerMode": "FutureDesktopLayer", "FutureOption": "keep-me" }""";
         File.WriteAllText(_path, futureJson);
         var store = new FileSystemSettingsStore(_path);
 

@@ -66,8 +66,12 @@ $allowedRootEntries = @(
     '.git'
     '.github'
     '.gitignore'
+    'CODE_OF_CONDUCT.md'
+    'CONTRIBUTING.md'
     'LICENSE'
     'README.md'
+    'SECURITY.md'
+    'THIRD-PARTY-NOTICES.md'
     'project'
     'ここから開始 - Desktop System Monitorを導入・更新.bat'
 )
@@ -384,7 +388,7 @@ if (Test-Path -LiteralPath $installerSchemaPath -PathType Leaf) {
 }
 
 if ($failures.Count -gt 0) {
-    $failures | ForEach-Object { Write-Error $_ }
+    $failures | ForEach-Object { Write-Error $_ -ErrorAction Continue }
     exit 1
 }
 Write-Host 'Publication contract checks passed.' -ForegroundColor Green

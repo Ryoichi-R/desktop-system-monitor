@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
-using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Text.Json;
 
 using DesktopSystemMonitor.Core.Platform;
 
@@ -10,24 +11,18 @@ namespace DesktopSystemMonitor.Mac.SensorHost.Tests;
 public sealed class SensorHostProtocolTests
 {
     [Fact]
-    public async Task RoundTrip_Preserves_Fixed_Schema_Message()
+    public async Task RoundTrip_Preserves_Fixed_Metric_Contract()
     {
-        var message = new SensorHostMessage
+        SensorHostMessage message = new()
         {
             Version = SensorHostProtocol.CurrentVersion,
             Kind = "response",
             Sequence = 4,
-            Status = "ok",
-            Metrics = new SensorHostMetrics
-            {
-                CpuUtilizationPercent = 25,
-                MemoryUtilizationPercent = 50,
-                GpuUtilizationPercent = 75,
-                DiskReadBytesPerSecond = 1,
-                DiskWriteBytesPerSecond = 2,
-                NetworkReceiveBytesPerSecond = 3,
-                NetworkSendBytesPerSecond = 4,
-            },
+            HostGeneration = 2,
+            Status = "unavailable",
+            MonotonicFrequency = Stopwatch.Frequency,
+            GeneratedAtMonotonicTicks = Stopwatch.GetTimestamp(),
+            Metrics = SensorHostMetrics.Empty,
         };
         await using var stream = new MemoryStream();
 
@@ -35,7 +30,10 @@ public sealed class SensorHostProtocolTests
         stream.Position = 0;
         SensorHostMessage actual = (await SensorHostProtocol.ReadAsync(stream, CancellationToken.None))!;
 
-        Assert.Equal(message, actual);
+        Assert.Equal(JsonSerializer.Serialize(message), JsonSerializer.Serialize(actual));
+        Assert.Equal(SensorHostMetricStatus.Unavailable, actual.Metrics.CpuUtilizationPercent.Status);
+        Assert.Null(actual.Metrics.CpuUtilizationPercent.Value);
+        Assert.Empty(actual.Metrics.HighLoadProcesses.Values);
     }
 
     [Fact]
@@ -79,25 +77,33 @@ public sealed class SensorHostProtocolTests
     [Fact]
     public void Validate_Rejects_NonFinite_Ok_Metric()
     {
-        var message = new SensorHostMessage
+        SensorHostMetrics metrics = SensorHostMetrics.Empty with
+        {
+            CpuUtilizationPercent = SensorHostMetricValue.Ok(double.NaN, 10),
+        };
+        SensorHostMessage message = new()
         {
             Version = SensorHostProtocol.CurrentVersion,
             Kind = "response",
             Sequence = 1,
+            HostGeneration = 1,
             Status = "ok",
-            Metrics = new SensorHostMetrics { CpuUtilizationPercent = double.NaN },
+            MonotonicFrequency = Stopwatch.Frequency,
+            GeneratedAtMonotonicTicks = Stopwatch.GetTimestamp(),
+            Metrics = metrics,
         };
 
         Assert.Throws<InvalidDataException>(() => SensorHostProtocol.Validate(message));
     }
 
     [Fact]
-    public void Unavailable_Response_Uses_Stable_Error_Contract()
+    public void Unavailable_Response_Uses_Stable_Error_And_Generation_Contract()
     {
-        SensorHostMessage response = SensorHostProtocol.Unavailable(9, "timeout");
+        SensorHostMessage response = SensorHostProtocol.Unavailable(9, 3, "timeout");
 
         Assert.Equal(SensorHostProtocol.CurrentVersion, response.Version);
         Assert.Equal("response", response.Kind);
+        Assert.Equal(3, response.HostGeneration);
         Assert.Equal("unavailable", response.Status);
         Assert.Equal("timeout", response.ErrorCode);
         Assert.Equal(SensorHostMetrics.Empty, response.Metrics);

@@ -44,3 +44,14 @@
 - `.app` bundle、self-contained single-file、ad-hoc署名、clean環境での展開cache検証
 
 未実装のネイティブ指標を0や推定値で表示しないことが、本部分実装の重要な安全条件である。
+
+## 2026-09-27 IPC契約追補
+
+計画のPhase 0M作業として、SensorHost契約をversion 2へ更新した。これはIPC契約の実装・検証であり、SensorHostの実プロセスlifecycleやnative collectorを実装した記録ではない。
+
+- 各指標は`Ok`／`Unavailable`／`WarmingUp`／`Stale`、nullable値、単調時計の採取時刻を持つ。欠落fieldと未知fieldは拒否し、取得不可を0へ既定化しない。
+- 要求IDとHost世代を照合し、応答・各採取値の鮮度を検証する。親子の単調時計周波数不一致、応答生成より未来の採取時刻、古い値は拒否する。
+- ネットワークinterfaceは最大64件・名前128文字、高負荷processは最大32件・名前256文字。payloadは64 KiBで上限を設ける。
+- 検証: Core.Tests 261/261、Mac.Tests 13/13、Mac.SensorHost.Tests 11/11。coverage gateはCore 94.11%、App.Avalonia 95.38%、Mac 97.43%、Mac.SensorHost 93.33%。Windows.TestsはmacOS上のため未実行。
+
+SensorHostは現時点で`native-metrics-not-implemented`を返し、`MacMetricSourceFactory`も`Unavailable`のままである。実プロセス起動・timeout・再起動/backoff・signal crash分離・ネイティブ指標取得は未完了であり、Phase 0MのGOおよびD10-Mの後に実装する。

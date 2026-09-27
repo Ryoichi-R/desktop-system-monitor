@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import DisplayProbePolicy
 import Foundation
 
 private struct DisplayDescriptor {
@@ -74,7 +75,7 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
   private var panels: [CGDirectDisplayID: NSPanel] = [:]
   private var panelViews: [CGDirectDisplayID: DisplayProbeOverlayView] = [:]
   private var anchors: [CGDirectDisplayID: NormalizedAnchor] = [:]
-  private var lastFullScreenState: [CGDirectDisplayID: Bool] = [:]
+  private var fullScreenState = DisplayFullScreenState()
   private var notificationTokens: [NSObjectProtocol] = []
   private var sampleTimer: Timer?
   private var detectorUnavailableWasLogged = false
@@ -205,7 +206,7 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
       panels[id]?.close()
       panels.removeValue(forKey: id)
       panelViews.removeValue(forKey: id)
-      lastFullScreenState.removeValue(forKey: id)
+      fullScreenState.remove(displayID: Int(id))
     }
 
     for display in currentDisplays {
@@ -213,7 +214,9 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
         createPanel(for: display)
       }
       placePanel(for: display)
-      refreshOverlayLabel(for: display, fullScreen: lastFullScreenState[display.id] ?? false)
+      refreshOverlayLabel(
+        for: display,
+        fullScreen: fullScreenState.isFullScreen(displayID: Int(display.id)))
     }
 
     detectorUnavailableWasLogged = false
@@ -282,8 +285,14 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
   @objc private func sampleWindowState() {
     let currentDisplays = displays()
     guard let fullScreenIDs = detectFullScreenDisplays(for: currentDisplays) else {
+      let restoredDisplayIDs = restoreOverlaysAfterDetectionFailure(for: currentDisplays)
       if !detectorUnavailableWasLogged {
-        logEvent("fullScreenDetectorUnavailable")
+        logEvent(
+          "fullScreenDetectorUnavailable",
+          fields: [
+            "overlayPolicy": "failOpen",
+            "restoredDisplayIDs": restoredDisplayIDs,
+          ])
         detectorUnavailableWasLogged = true
       }
       return
@@ -292,8 +301,7 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
 
     for display in currentDisplays {
       let detected = fullScreenIDs.contains(display.id)
-      let wasDetected = lastFullScreenState[display.id]
-      lastFullScreenState[display.id] = detected
+      let wasDetected = fullScreenState.update(displayID: Int(display.id), isFullScreen: detected)
       refreshOverlayLabel(for: display, fullScreen: detected)
 
       guard wasDetected != detected, let panel = panels[display.id] else {
@@ -312,6 +320,21 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
           "overlayVisible": !detected,
         ])
     }
+  }
+
+  private func restoreOverlaysAfterDetectionFailure(
+    for currentDisplays: [DisplayDescriptor]
+  ) -> [Int] {
+    let restoredDisplayIDs = fullScreenState.failOpen(
+      displayIDs: currentDisplays.map { Int($0.id) })
+    let restoredSet = Set(restoredDisplayIDs)
+    for display in currentDisplays {
+      refreshOverlayLabel(for: display, fullScreen: false)
+      if restoredSet.contains(Int(display.id)) {
+        panels[display.id]?.orderFrontRegardless()
+      }
+    }
+    return restoredDisplayIDs
   }
 
   private func detectFullScreenDisplays(
@@ -351,17 +374,10 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
 
     var result = Set<CGDirectDisplayID>()
     for display in currentDisplays {
-      let displayArea = display.quartzBounds.width * display.quartzBounds.height
-      guard displayArea > 0 else {
-        continue
-      }
       let coversDisplay = candidateWindows.contains { windowBounds in
-        let overlap = windowBounds.intersection(display.quartzBounds)
-        guard !overlap.isNull, !overlap.isEmpty else {
-          return false
-        }
-        let overlapArea = overlap.width * overlap.height
-        return overlapArea / displayArea >= 0.95
+        FullScreenWindowPolicy.coversDisplay(
+          windowBounds: windowBounds,
+          displayBounds: display.quartzBounds)
       }
       if coversDisplay {
         result.insert(display.id)

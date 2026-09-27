@@ -69,11 +69,12 @@ public sealed class MacCoverageTests
         {
             var fileSystem = new RealSensorHostFileSystem();
 
-            Assert.Equal(Path.GetFullPath(path), fileSystem.GetCanonicalPath(path));
+            string expectedCanonicalPath = MacRealPath.Resolve(Path.GetFullPath(path));
+            Assert.Equal(expectedCanonicalPath, fileSystem.GetCanonicalPath(path));
             Assert.True(fileSystem.IsRegularFile(path));
             Assert.False(fileSystem.IsRegularFile(Path.GetDirectoryName(path)!));
             Assert.False(fileSystem.IsSymbolicLink(path));
-            Assert.Equal(Path.GetFullPath(path), MacRealPath.Resolve(Path.GetFullPath(path)));
+            Assert.Equal(expectedCanonicalPath, MacRealPath.Resolve(Path.GetFullPath(path)));
             if (OperatingSystem.IsMacOS())
             {
                 Assert.Throws<IOException>(() => MacRealPath.Resolve(path + ".missing"));

@@ -4,9 +4,12 @@ namespace DesktopSystemMonitor.Mac.SensorHost;
 
 internal static class Program
 {
+    internal static Func<Stream> StandardInputFactory { get; set; } = Console.OpenStandardInput;
+    internal static Func<Stream> StandardOutputFactory { get; set; } = Console.OpenStandardOutput;
+
     public static Task<int> Main() => RunAsync(
-        Console.OpenStandardInput(),
-        Console.OpenStandardOutput(),
+        StandardInputFactory(),
+        StandardOutputFactory(),
         CancellationToken.None);
 
     internal static async Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken)
@@ -44,8 +47,8 @@ internal static class SensorHostServer
                 }
 
                 SensorHostMessage response = request.Kind == "sample"
-                    ? SensorHostProtocol.Unavailable(request.Sequence, "native-metrics-not-implemented")
-                    : SensorHostProtocol.Unavailable(request.Sequence, "unsupported-request");
+                    ? SensorHostProtocol.Unavailable(request.Sequence, request.HostGeneration, "native-metrics-not-implemented")
+                    : SensorHostProtocol.Unavailable(request.Sequence, request.HostGeneration, "unsupported-request");
                 await SensorHostProtocol.WriteAsync(output, response, cancellationToken).ConfigureAwait(false);
             }
 

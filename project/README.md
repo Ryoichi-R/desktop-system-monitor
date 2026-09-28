@@ -1,5 +1,7 @@
 <h1 align="center">Desktop System Monitor</h1>
 
+> **macOSローカル評価版（Apple Silicon）:** [起動・設定・既知の制限](docs/usage/macos.md)を追加しました。CPU・メモリ・GPU・ネットワーク・ディスクI/O・高負荷プロセス、1%単位の表示倍率、全画面時の非表示に対応します。Windowsの導入手順は以下のままです。Macの最終実機受入とWindows Avalonia置換は未完了です。
+
 <p align="center">
   Windows 11の主要なシステム指標を、作業を妨げない小型オーバーレイで表示します。<br>
   <em>A compact Windows 11 overlay that keeps essential system activity visible without getting in the way.</em>

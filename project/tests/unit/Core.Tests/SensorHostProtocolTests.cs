@@ -94,13 +94,65 @@ public sealed class SensorHostProtocolTests
     public async Task Read_Rejects_Missing_Required_Metric_And_Unknown_Fields()
     {
         SensorHostMessage message = CreateResponse();
-        JsonObject payload = JsonNode.Parse(JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web)))!.AsObject();
+        JsonObject payload = JsonNode.Parse(JsonSerializer.Serialize(message, JsonSerializerOptions.Web))!.AsObject();
         payload["metrics"]!.AsObject().Remove("gpuUtilizationPercent");
         await AssertPayloadRejectedAsync(payload);
 
-        payload = JsonNode.Parse(JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web)))!.AsObject();
+        payload = JsonNode.Parse(JsonSerializer.Serialize(message, JsonSerializerOptions.Web))!.AsObject();
         payload["unexpectedMetric"] = 1;
         await AssertPayloadRejectedAsync(payload);
+    }
+
+    [Theory]
+    [InlineData("metrics")]
+    [InlineData("metrics.cpuUtilizationPercent")]
+    [InlineData("metrics.networkInterfaces")]
+    [InlineData("metrics.networkInterfaces.values")]
+    [InlineData("metrics.networkInterfaces.values.0")]
+    [InlineData("metrics.networkInterfaces.values.0.receiveBytesPerSecond")]
+    [InlineData("metrics.highLoadProcesses")]
+    [InlineData("metrics.highLoadProcesses.values")]
+    [InlineData("metrics.highLoadProcesses.values.0")]
+    [InlineData("metrics.highLoadProcesses.values.0.cpuUtilizationPercent")]
+    public async Task Read_Rejects_Explicit_Nulls_As_Invalid_Data(string path)
+    {
+        JsonObject payload = JsonNode.Parse(JsonSerializer.Serialize(
+            CreateResponse(), JsonSerializerOptions.Web))!.AsObject();
+        string[] parts = path.Split('.');
+        JsonNode parent = payload;
+        foreach (string part in parts[..^1])
+        {
+            parent = parent is JsonArray array ? array[int.Parse(part, System.Globalization.CultureInfo.InvariantCulture)]! : parent[part]!;
+        }
+        if (parent is JsonArray values)
+        {
+            values[int.Parse(parts[^1], System.Globalization.CultureInfo.InvariantCulture)] = null;
+        }
+        else
+        {
+            parent[parts[^1]] = null;
+        }
+
+        await AssertPayloadRejectedAsync(payload);
+    }
+
+    [Theory]
+    [InlineData("\"version\":2", "\"version\":999,\"version\":2")]
+    [InlineData("\"value\":25", "\"value\":0,\"value\":25")]
+    [InlineData("\"name\":\"en0\"", "\"name\":\"other\",\"name\":\"en0\"")]
+    [InlineData("\"version\":2", "\"\\u0076ersion\":999,\"version\":2")]
+    public async Task Read_Rejects_Duplicate_Properties_At_All_Depths(string original, string duplicate)
+    {
+        string json = JsonSerializer.Serialize(CreateResponse(), JsonSerializerOptions.Web);
+        Assert.Contains(original, json);
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(json.Replace(original, duplicate, StringComparison.Ordinal));
+        byte[] frame = new byte[bytes.Length + sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, sizeof(int));
+        await using var stream = new MemoryStream(frame);
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await SensorHostProtocol.ReadAsync(stream, CancellationToken.None));
     }
 
     [Fact]

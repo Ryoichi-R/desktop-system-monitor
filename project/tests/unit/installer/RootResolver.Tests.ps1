@@ -28,3 +28,22 @@ Describe 'repository root resolver' {
         $roots.Layout | Should -Be 'migrated'
     }
 }
+
+Describe 'repository boundary validation' {
+    It 'rejects a sibling whose name starts with the repository name' {
+        $repo = Join-Path $TestDrive 'repo'
+        $outside = Join-Path $TestDrive 'repo-other'
+        New-Item -ItemType Directory -Path $repo -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $outside 'src') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $outside 'scripts') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $outside 'Directory.Build.props') -Value '<Project />'
+        { Resolve-DesktopSystemMonitorRoots -RepositoryRoot $repo -ProjectRoot $outside } | Should -Throw '*child of it*'
+    }
+
+    It 'preserves the filesystem root during normalization' {
+        $filesystemRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($TestDrive))
+        $normalized = ConvertTo-DesktopSystemMonitorFullPath -Path $filesystemRoot
+        [IO.Path]::IsPathFullyQualified($normalized) | Should -BeTrue
+        if ([IO.Path]::DirectorySeparatorChar -eq '/') { $normalized | Should -Be '/' }
+    }
+}

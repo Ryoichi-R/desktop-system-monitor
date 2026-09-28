@@ -1,5 +1,3 @@
-using DesktopSystemMonitor.Mac;
-
 using Xunit;
 
 namespace DesktopSystemMonitor.Mac.Tests;
@@ -7,19 +5,12 @@ namespace DesktopSystemMonitor.Mac.Tests;
 public sealed class MacAppPathProviderTests
 {
     [Fact]
-    public void Uses_Explicit_MacOS_Application_And_Log_Directories()
+    public void Explicit_Settings_And_Log_Roots_Are_Separate()
     {
-        var provider = new MacAppPathProvider(@"/Users/tester");
-
-        Assert.Equal(
-            @"/Users/tester/Library/Application Support/DesktopSystemMonitor/settings.json",
-            provider.SettingsFilePath);
-        Assert.Equal(@"/Users/tester/Library/Logs/DesktopSystemMonitor", provider.LogDirectory);
-    }
-
-    [Fact]
-    public void Rejects_NonAbsolute_User_Home()
-    {
-        Assert.Throws<ArgumentException>(() => new MacAppPathProvider("relative-home"));
+        var paths = new MacAppPathProvider(Path.GetFullPath("test-home"));
+        Assert.EndsWith(Path.Combine("Library", "Application Support", "DesktopSystemMonitor", "mac-widget.json"), paths.SettingsFilePath);
+        Assert.EndsWith(Path.Combine("Library", "Logs", "DesktopSystemMonitor"), paths.LogDirectory);
+        Assert.True(Path.IsPathFullyQualified(new MacAppPathProvider().SettingsFilePath));
+        Assert.Throws<ArgumentException>(() => new MacAppPathProvider("relative"));
     }
 }

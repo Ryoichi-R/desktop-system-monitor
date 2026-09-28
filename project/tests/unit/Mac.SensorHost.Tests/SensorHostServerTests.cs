@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Buffers.Binary;
+using System.Text;
+using System.Text.Json.Nodes;
 
 using DesktopSystemMonitor.Core.Platform;
 
@@ -55,6 +58,49 @@ public sealed class SensorHostServerTests
         Assert.Equal(2, exitCode);
     }
 
+    [Theory]
+    [InlineData("null-metric")]
+    [InlineData("null-group")]
+    [InlineData("null-network-element")]
+    [InlineData("null-process-element")]
+    [InlineData("duplicate-field")]
+    public async Task Malformed_Schema_Exits_With_Code_Two_Without_Response(string scenario)
+    {
+        await using var validFrame = new MemoryStream();
+        SensorHostMessage request = CreateRequest("sample", 12);
+        await SensorHostProtocol.WriteAsync(validFrame, request, CancellationToken.None);
+        JsonNode payload = JsonNode.Parse(validFrame.ToArray().AsSpan(sizeof(int)))!;
+        if (scenario == "null-metric")
+        {
+            payload["metrics"]!["cpuUtilizationPercent"] = null;
+        }
+        else if (scenario == "null-group")
+        {
+            payload["metrics"]!["networkInterfaces"] = null;
+        }
+        else if (scenario is "null-network-element" or "null-process-element")
+        {
+            string group = scenario == "null-network-element" ? "networkInterfaces" : "highLoadProcesses";
+            payload["metrics"]![group]!["status"] = "Ok";
+            payload["metrics"]![group]!["sampledAtMonotonicTicks"] = request.GeneratedAtMonotonicTicks;
+            payload["metrics"]![group]!["values"] = new JsonArray { null };
+        }
+        string json = payload.ToJsonString();
+        if (scenario == "duplicate-field")
+        {
+            json = json.Insert(1, "\"version\":999,");
+        }
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        byte[] frame = new byte[bytes.Length + sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, sizeof(int));
+        await using var input = new MemoryStream(frame);
+        await using var output = new MemoryStream();
+
+        Assert.Equal(2, await SensorHostServer.RunAsync(input, output, CancellationToken.None));
+        Assert.Equal(0, output.Length);
+    }
+
     [Fact]
     public async Task Canceled_Request_Stops_Without_Writing()
     {
@@ -92,6 +138,8 @@ public sealed class SensorHostServerTests
 
         Func<Stream> previousInputFactory = Program.StandardInputFactory;
         Func<Stream> previousOutputFactory = Program.StandardOutputFactory;
+        var previousSamplerFactory = Program.SamplerFactory;
+        Program.SamplerFactory = () => null;
         Program.StandardInputFactory = () => input;
         Program.StandardOutputFactory = () => output;
         try
@@ -100,6 +148,7 @@ public sealed class SensorHostServerTests
         }
         finally
         {
+            Program.SamplerFactory = previousSamplerFactory;
             Program.StandardInputFactory = previousInputFactory;
             Program.StandardOutputFactory = previousOutputFactory;
         }

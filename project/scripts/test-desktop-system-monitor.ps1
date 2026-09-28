@@ -51,6 +51,7 @@ $winCsproj = Join-Path $projectRoot 'tests/unit/Windows.Tests/DesktopSystemMonit
 $appCsproj = Join-Path $projectRoot 'tests/unit/App.Tests/DesktopSystemMonitor.App.Tests.csproj'
 $intCsproj = Join-Path $projectRoot 'tests/integration/DesktopSystemMonitor.IntegrationTests.csproj'
 $macCsproj = Join-Path $projectRoot 'tests/unit/Mac.Tests/DesktopSystemMonitor.Mac.Tests.csproj'
+$macIntegrationCsproj = Join-Path $projectRoot 'tests/integration/Mac/DesktopSystemMonitor.IntegrationTests.Mac.csproj'
 $sensorHostCsproj = Join-Path $projectRoot 'tests/unit/Mac.SensorHost.Tests/DesktopSystemMonitor.Mac.SensorHost.Tests.csproj'
 $avaloniaAppCsproj = Join-Path $projectRoot 'tests/unit/App.Avalonia.Tests/DesktopSystemMonitor.App.Avalonia.Tests.csproj'
 $avaloniaPocCsproj = Join-Path $projectRoot 'tests/phase0w/DesktopSystemMonitor.Avalonia.PoC.csproj'
@@ -58,10 +59,17 @@ $avaloniaPocCsproj = Join-Path $projectRoot 'tests/phase0w/DesktopSystemMonitor.
 $failed = $false
 
 function Invoke-Test {
-    param([string]$Csproj)
+    param(
+        [string]$Csproj,
+        [string[]]$Properties = @()
+    )
     Write-Host ""
     Write-Host "==> dotnet test $Csproj"
-    & dotnet test $Csproj --configuration Release --nologo --logger "console;verbosity=minimal"
+    $arguments = @($Csproj, '--configuration', 'Release', '--nologo', '--logger', 'console;verbosity=minimal')
+    foreach ($property in $Properties) {
+        $arguments += "-p:$property"
+    }
+    & dotnet test @arguments
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $Csproj" -ForegroundColor Red
         $script:failed = $true
@@ -85,10 +93,11 @@ if (($Windows -or $All) -and $IsWindows) {
 if ($Mac -or $All) {
     Invoke-Test -Csproj $macCsproj
     Invoke-Test -Csproj $sensorHostCsproj
+    if ($IsMacOS) { Invoke-Test -Csproj $macIntegrationCsproj }
 }
 
 if ($Avalonia -or $All) {
-    Invoke-Test -Csproj $avaloniaAppCsproj
+    Invoke-Test -Csproj $avaloniaAppCsproj -Properties @('MacAvaloniaOnly=true')
     Invoke-Test -Csproj $avaloniaPocCsproj
 }
 

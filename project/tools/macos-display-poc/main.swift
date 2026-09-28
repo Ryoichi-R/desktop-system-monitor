@@ -340,12 +340,6 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
   private func detectFullScreenDisplays(
     for currentDisplays: [DisplayDescriptor]
   ) -> Set<CGDirectDisplayID>? {
-    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
-      return nil
-    }
-    guard frontmost.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
-      return []
-    }
     guard
       let windowInfos = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements],
@@ -357,10 +351,10 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
     let ownerKey = kCGWindowOwnerPID as String
     let layerKey = kCGWindowLayer as String
     let boundsKey = kCGWindowBounds as String
-    let frontmostPID = frontmost.processIdentifier
-    let candidateWindows: [CGRect] = windowInfos.compactMap { info in
-      guard (info[ownerKey] as? NSNumber)?.int32Value == frontmostPID,
-        (info[layerKey] as? NSNumber)?.intValue == 0,
+    let alphaKey = kCGWindowAlpha as String
+    let candidateWindows: [DisplayWindowCandidate] = windowInfos.compactMap { info in
+      guard let ownerPID = (info[ownerKey] as? NSNumber)?.int32Value,
+        let layer = (info[layerKey] as? NSNumber)?.intValue,
         let dictionary = info[boundsKey] as? NSDictionary
       else {
         return nil
@@ -369,16 +363,17 @@ private final class DisplayProbeAppDelegate: NSObject, NSApplicationDelegate, NS
       guard CGRectMakeWithDictionaryRepresentation(dictionary as CFDictionary, &bounds) else {
         return nil
       }
-      return bounds
+      return DisplayWindowCandidate(
+        ownerPID: ownerPID, layer: layer, bounds: bounds,
+        alpha: (info[alphaKey] as? NSNumber)?.doubleValue ?? 1)
     }
 
     var result = Set<CGDirectDisplayID>()
     for display in currentDisplays {
-      let coversDisplay = candidateWindows.contains { windowBounds in
-        FullScreenWindowPolicy.coversDisplay(
-          windowBounds: windowBounds,
-          displayBounds: display.quartzBounds)
-      }
+      let coversDisplay = FullScreenWindowPolicy.isFullScreen(
+        windowsFrontToBack: candidateWindows,
+        displayBounds: display.quartzBounds,
+        excludedOwnerPID: ProcessInfo.processInfo.processIdentifier)
       if coversDisplay {
         result.insert(display.id)
       }

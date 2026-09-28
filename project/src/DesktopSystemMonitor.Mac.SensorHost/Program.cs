@@ -7,6 +7,9 @@ internal static class Program
     internal static Func<Stream> StandardInputFactory { get; set; } = Console.OpenStandardInput;
     internal static Func<Stream> StandardOutputFactory { get; set; } = Console.OpenStandardOutput;
 
+    internal static Func<Func<SensorHostMetrics>?> SamplerFactory { get; set; } = () =>
+        OperatingSystem.IsMacOS() ? new NativeMetricCollector().Sample : null;
+
     public static Task<int> Main() => RunAsync(
         StandardInputFactory(),
         StandardOutputFactory(),
@@ -23,7 +26,9 @@ internal static class Program
         Console.CancelKeyPress += handler;
         try
         {
-            return await SensorHostServer.RunAsync(input, output, lifetime.Token).ConfigureAwait(false);
+            var sample = SamplerFactory();
+            using var owner = sample?.Target as IDisposable;
+            return await SensorHostServer.RunAsync(input, output, lifetime.Token, sample).ConfigureAwait(false);
         }
         finally
         {
@@ -34,7 +39,7 @@ internal static class Program
 
 internal static class SensorHostServer
 {
-    internal static async Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken)
+    internal static async Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken, Func<SensorHostMetrics>? sample = null)
     {
         try
         {
@@ -49,6 +54,11 @@ internal static class SensorHostServer
                 SensorHostMessage response = request.Kind == "sample"
                     ? SensorHostProtocol.Unavailable(request.Sequence, request.HostGeneration, "native-metrics-not-implemented")
                     : SensorHostProtocol.Unavailable(request.Sequence, request.HostGeneration, "unsupported-request");
+                if (request.Kind == "sample" && sample is not null)
+                {
+                    SensorHostMetrics metrics = sample();
+                    response = response with { Status = "ok", ErrorCode = null, Metrics = metrics, GeneratedAtMonotonicTicks = System.Diagnostics.Stopwatch.GetTimestamp() };
+                }
                 await SensorHostProtocol.WriteAsync(output, response, cancellationToken).ConfigureAwait(false);
             }
 

@@ -9,7 +9,11 @@ Set-StrictMode -Version 2.0
 
 function ConvertTo-DesktopSystemMonitorFullPath {
     param([Parameter(Mandatory)][string]$Path)
-    return [IO.Path]::GetFullPath($Path).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    if ($fullPath -eq [IO.Path]::GetPathRoot($fullPath)) { return $fullPath }
+    $trimmed = $fullPath.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    if ([string]::IsNullOrEmpty($trimmed)) { return [IO.Path]::GetPathRoot($fullPath) }
+    return $trimmed
 }
 
 function Test-DesktopSystemMonitorSourceRoot {
@@ -69,8 +73,10 @@ function Resolve-DesktopSystemMonitorRoots {
         $project = $repo
     }
     if (-not (Test-DesktopSystemMonitorSourceRoot -Path $project)) { throw "Project root does not contain the expected source contract: $project" }
-    $repoBoundary = $repo.TrimEnd('\') + '\'
-    if ($project -ne $repo -and -not $project.StartsWith($repoBoundary, [StringComparison]::OrdinalIgnoreCase)) {
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $repoBoundary = $repo.TrimEnd($separator, [IO.Path]::AltDirectorySeparatorChar) + $separator
+    $comparison = if ($separator -eq '\') { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    if (-not [string]::Equals($project, $repo, $comparison) -and -not $project.StartsWith($repoBoundary, $comparison)) {
         throw "Project root must be the repository root or a child of it: $project"
     }
     [pscustomobject]@{

@@ -17,5 +17,6 @@
     <Project Path="tests/unit/App.Tests/DesktopSystemMonitor.App.Tests.csproj" />
     <Project Path="tests/phase0w/DesktopSystemMonitor.Avalonia.PoC.csproj" />
     <Project Path="tests/integration/DesktopSystemMonitor.IntegrationTests.csproj" />
+    <Project Path="tests/integration/Mac/DesktopSystemMonitor.IntegrationTests.Mac.csproj" />
   </Folder>
 </Solution>

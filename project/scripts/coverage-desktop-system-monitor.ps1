@@ -46,13 +46,14 @@ $targets = @(
         Csproj = 'tests/unit/App.Avalonia.Tests/DesktopSystemMonitor.App.Avalonia.Tests.csproj'
         Threshold = 90
         Include = 'DesktopSystemMonitor'
+        Properties = @('MacAvaloniaOnly=true')
     },
     @{
         Name = 'Mac.Tests'
         Csproj = 'tests/unit/Mac.Tests/DesktopSystemMonitor.Mac.Tests.csproj'
         Threshold = 90
         Include = 'DesktopSystemMonitor.Mac'
-        ExcludeByFile = '**/obj/**'
+        ExcludeByFile = '**/obj/**,**/Interop/MacWindowInterop.cs'
         MacOnly = $true
     },
     @{
@@ -84,7 +85,14 @@ foreach ($target in $targets) {
         '--configuration', 'Release',
         '--nologo',
         '--collect', 'XPlat Code Coverage',
-        '--results-directory', $projOut,
+        '--results-directory', $projOut
+    )
+    if ($target.ContainsKey('Properties')) {
+        foreach ($property in $target.Properties) {
+            $args += "-p:$property"
+        }
+    }
+    $args += @(
         '--',
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura",
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include=[$($target.Include)]*"

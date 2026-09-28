@@ -219,6 +219,7 @@ public static class SensorHostProtocol
         {
             NumberHandling = JsonNumberHandling.Strict,
             PropertyNameCaseInsensitive = false,
+            AllowDuplicateProperties = false,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
         options.Converters.Add(new JsonStringEnumConverter<SensorHostMetricStatus>());
@@ -232,7 +233,10 @@ public static class SensorHostProtocol
         string name,
         long generatedAtMonotonicTicks)
     {
-        ArgumentNullException.ThrowIfNull(metric);
+        if (metric is null)
+        {
+            throw new InvalidDataException($"SensorHost {name} metric is missing.");
+        }
         if (!Enum.IsDefined(metric.Status) || metric.SampledAtMonotonicTicks < 0 ||
             metric.SampledAtMonotonicTicks > generatedAtMonotonicTicks)
         {
@@ -263,11 +267,15 @@ public static class SensorHostProtocol
         long generatedAtMonotonicTicks)
         where T : class
     {
-        ArgumentNullException.ThrowIfNull(collection);
+        if (collection is null)
+        {
+            throw new InvalidDataException($"SensorHost {name} collection is missing.");
+        }
         if (!Enum.IsDefined(collection.Status) ||
             collection.SampledAtMonotonicTicks < 0 ||
             collection.SampledAtMonotonicTicks > generatedAtMonotonicTicks ||
-            collection.Values is null)
+            collection.Values is null ||
+            collection.Values.Any(value => value is null))
         {
             throw new InvalidDataException($"SensorHost {name} metadata is invalid.");
         }

@@ -1,0 +1,8 @@
+# 010 — AppのTFMとMac先行構成
+
+Status: Implemented for the local macOS candidate; final owner acceptance pending.
+Date: 2026-09-28 (Asia/Tokyo)
+
+Appはnet10.0側でAvaloniaとMac、net10.0-windows側でWPFとWindowsを参照する。MacAvaloniaOnly=trueによりMacのrestore/build/publishでWindows TFMとWindows製品projectを外す。Avalonia.Desktop由来の複数OSバックエンドはWindowsDesktop runtime要求とは区別する。
+
+Mac本体はMacSensorSession経由の検証済みDTOを表示する。従来IMetricSourceFactoryのnull objectはプレビュー／未接続fallbackとして残る。WPFの大規模compositionをMacから参照せず、共通RateCalculatorとRecentPeakTrackerを再利用する。MacAppPathProviderで設定とログの明示的な保存先をまとめる。Windowsの全面置換と統合compositionへの一本化はWindows受入が必要。

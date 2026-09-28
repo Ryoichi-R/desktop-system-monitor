@@ -21,11 +21,11 @@ The display coverage and fail-open state policies run without opening a window o
 
 - Active display IDs, AppKit point frames, visible frames, Quartz bounds, backing scale, and primary-display status.
 - Display-configuration notifications and active-Space changes.
-- A foreground layer-0 window from the frontmost application that covers at least 95% of a display's Quartz bounds. The overlay on that display hides while this heuristic is true and returns when it becomes false.
-- If the frontmost application or window-list query is unavailable, any overlay hidden by the heuristic is restored (fail-open); the dashboard records that detection was unavailable without recording app names or PIDs.
+- The frontmost eligible layer-0 window intersecting each display that covers at least 95% of that display's Quartz bounds. Selection uses the on-screen window list in front-to-back order, independently of the globally focused app; this probe's own windows and transparent windows are excluded. The overlay on that display hides while this heuristic is true and returns when it becomes false.
+- If the window-list query is unavailable, any overlay hidden by the heuristic is restored (fail-open); the dashboard records that detection was unavailable without recording app names or PIDs.
 - Overlay position as normalized fractions of each display's visible frame. The position is retained in memory by display ID and reapplied after topology or scale changes.
 
-The window-list query reads only owner PID, layer, and bounds to make the detection decision. JSONL and dashboard output never include app names, window titles, or PIDs. No window images or screenshots are captured.
+The window-list query reads only owner PID, layer, bounds, and alpha to make the detection decision. JSONL and dashboard output never include app names, window titles, or PIDs. No window images or screenshots are captured.
 
 ## Manual P0-2b checks
 
@@ -36,3 +36,11 @@ The window-list query reads only owner PID, layer, and bounds to make the detect
 5. Change a display's scaling and confirm the panel stays within its visible frame at the same normalized position.
 
 The full-screen rule is an experimental 95%-coverage heuristic, not a macOS full-screen API. A maximized ordinary window may also match it. Policy tests do not replace the manual multi-display and Space checks required for Phase 0M acceptance.
+
+## Additional focus and occlusion checks
+
+- Leave a full-screen app on display A, then focus an ordinary app on display B. A must remain hidden and B visible. Repeat with full-screen apps on both displays.
+- Focus the probe dashboard: its own windows must not clear other applications' full-screen state.
+- Place an ordinary layer-0 window in front of a display-covering window on the same display: the probe intentionally selects the frontmost intersecting window, so the overlay returns.
+- The policy is conservative when a window straddles displays: even a partial intersection participates in front-to-back selection. Record such cases during manual acceptance.
+- Confirm Space switching changes the on-screen candidates and restores visibility. The synthetic policy checks cannot validate the OS window-list ordering or Space behavior.

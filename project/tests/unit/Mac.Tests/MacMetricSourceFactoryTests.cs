@@ -17,6 +17,7 @@ public sealed class MacMetricSourceFactoryTests
         using INetworkMetricSource network = factory.CreateNetwork();
         using IPowerMetricSource power = factory.CreatePower((_, _) => { });
         using IDiskMetricSource disk = factory.CreateDisk();
+        using IBatteryMetricSource battery = factory.CreateBattery();
 
         Assert.Equal(MetricStatus.Unavailable, (await cpu.SampleAsync(CancellationToken.None)).UtilizationStatus);
         Assert.Equal(MetricStatus.Unavailable, (await memory.SampleAsync(CancellationToken.None)).Status);
@@ -24,5 +25,6 @@ public sealed class MacMetricSourceFactoryTests
         Assert.Equal(MetricStatus.Unavailable, (await network.SampleAsync(CancellationToken.None)).AggregateStatus);
         Assert.Equal(MetricStatus.Unavailable, (await power.SampleAsync(CancellationToken.None)).CpuPackageStatus);
         Assert.Equal(MetricStatus.Unavailable, (await disk.SampleAsync(CancellationToken.None)).Status);
+        Assert.Equal(BatteryPowerState.Absent, (await battery.SampleAsync(CancellationToken.None)).PowerState);
     }
 }

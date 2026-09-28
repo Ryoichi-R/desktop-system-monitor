@@ -1,34 +1,164 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="DesktopSystemMonitor.App.AvaloniaMainWindow"
-        Width="420"
-        Height="260"
-        MinWidth="320"
-        MinHeight="200"
-        Title="Desktop System Monitor"
-        WindowStartupLocation="CenterScreen">
-  <Border Padding="20">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="10">
-      <TextBlock x:Name="TitleText"
-                 FontSize="20"
-                 Text="Desktop System Monitor" />
-      <TextBlock x:Name="StatusText"
-                 Grid.Row="1"
-                 Text="ネイティブ指標: N/A" />
-      <StackPanel Grid.Row="2" Spacing="4">
-        <TextBlock x:Name="CpuText" Text="CPU: N/A" />
-        <TextBlock x:Name="MemoryText" Text="メモリ: N/A" />
-        <TextBlock x:Name="GpuText" Text="GPU: N/A" />
-      </StackPanel>
-      <Button x:Name="RefreshButton"
-              Grid.Row="3"
-              HorizontalAlignment="Left"
-              Content="状態を再確認"
-              Click="OnRefreshClick" />
-      <TextBlock x:Name="SafetyText"
-                 Grid.Row="4"
-                 TextWrapping="Wrap"
-                 Text="未実装または取得不能な指標は推測せず N/A として表示します。" />
-    </Grid>
+        Width="280" Height="220" CanResize="False" ShowInTaskbar="False" ShowActivated="False"
+        WindowDecorations="None" Background="Transparent" TransparencyLevelHint="Transparent"
+        Title="Desktop System Monitor" WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="TextBlock"><Setter Property="Foreground" Value="#FFF3F3F3" /></Style>
+    <Style Selector="TextBlock.label"><Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#FFB0B0B0" /><Setter Property="VerticalAlignment" Value="Center" /></Style>
+    <Style Selector="TextBlock.detail"><Setter Property="FontSize" Value="12" /><Setter Property="Foreground" Value="#FF7DC8FF" /></Style>
+  </Window.Styles>
+  <Border x:Name="WidgetBackground" Background="Transparent" PointerPressed="OnWidgetPointerPressed">
+    <Border.ContextMenu>
+      <ContextMenu>
+        <MenuItem x:Name="StatusMenu" Header="CPU・メモリ: 接続待ち" IsEnabled="False" />
+        <MenuItem Header="表示倍率">
+          <MenuItem Header="倍率を入力…（50〜150%）" Click="OnScaleCustom" />
+          <MenuItem x:Name="Scale50Menu" ToggleType="Radio" Header="50%" Click="OnScale50" />
+          <MenuItem x:Name="Scale75Menu" ToggleType="Radio" Header="75%" Click="OnScale75" />
+          <MenuItem x:Name="ScaleNormalMenu" ToggleType="Radio" Header="100%" Click="OnScaleNormal" />
+          <MenuItem x:Name="ScaleMediumMenu" ToggleType="Radio" Header="125%" Click="OnScaleMedium" />
+          <MenuItem x:Name="ScaleLargeMenu" ToggleType="Radio" Header="150%" Click="OnScaleLarge" />
+        </MenuItem>
+        <MenuItem x:Name="DiagnosticLoggingMenu" Header="診断ログを記録" ToggleType="CheckBox" Click="OnDiagnosticLogging" />
+        <MenuItem Header="高負荷プロセス…" Click="OnProcessDetails" />
+        <MenuItem x:Name="FullScreenHideMenu" Header="全画面時に自動で隠す" ToggleType="CheckBox" Click="OnFullScreenHiding" />
+        <MenuItem Header="ディスクの読み書き…" Click="OnDiskDetails" />
+        <MenuItem Header="表示形式">
+          <MenuItem x:Name="DisplayModeStandardMenu" ToggleType="Radio" Header="通常版（280 DIP）" Click="OnDisplayModeStandard" />
+          <MenuItem x:Name="DisplayModeReducedMenu" ToggleType="Radio" Header="縮小版（150 DIP）" Click="OnDisplayModeReduced" />
+        </MenuItem>
+        <MenuItem x:Name="TopmostMenu" ToggleType="CheckBox" Header="常に手前に表示" Click="OnToggleTopmost" />
+        <MenuItem x:Name="DesktopLayerMenu" ToggleType="CheckBox" Header="デスクトップ最背面" Click="OnToggleDesktopLayer" />
+        <MenuItem x:Name="ClickThroughMenu" ToggleType="CheckBox" Header="クリックを透過" Click="OnToggleClickThrough" />
+        <MenuItem x:Name="StartAtLoginMenu" ToggleType="CheckBox" Header="ログイン時に自動起動" Click="OnToggleStartAtLogin" />
+        <MenuItem x:Name="RefreshButton" Header="状態を再確認" Click="OnRefreshClick" />
+        <Separator />
+        <MenuItem Header="終了" Click="OnQuit" />
+        <MenuItem x:Name="CpuPeakWindowMenu" Header="CPU最大値の集計期間" />
+        <MenuItem x:Name="NetworkPeakWindowMenu" Header="ネットワーク最大値の集計期間" />
+        <MenuItem x:Name="SettingsMenu" Header="設定はこの起動中のみ有効" IsEnabled="False" />
+      </ContextMenu>
+    </Border.ContextMenu>
+    <Viewbox Stretch="Fill">
+      <Grid x:Name="WidgetContent" Width="280" Height="220">
+        <StackPanel x:Name="StandardContentPanel" Width="280" Height="220" Margin="0">
+        <StackPanel Margin="8" Spacing="4">
+          <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="38,92,*" ToolTip.Tip="CPU">
+            <TextBlock Classes="label" Text="CPU" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0">
+              <TextBlock x:Name="CpuText" Text="N/A" FontSize="24" FontWeight="SemiBold" />
+              <TextBlock x:Name="CpuUnit" FontSize="13" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock x:Name="CpuTemperatureText" Classes="detail" Grid.Row="1" Grid.Column="1" Text="N/A" ToolTip.Tip="CPU温度*: 関連センサー群の最大値による推定" />
+            <TextBlock x:Name="CpuPeakText" Classes="detail" Grid.Row="1" Grid.Column="2" Text="60s max --" TextAlignment="Right" />
+            <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Background="Transparent">
+              <Rectangle x:Name="CpuBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+              </Rectangle>
+            </Border>
+          </Grid>
+          <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="38,92,*" ToolTip.Tip="MEM">
+            <TextBlock Classes="label" Text="MEM" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0">
+              <TextBlock x:Name="MemoryText" Text="N/A" FontSize="24" FontWeight="SemiBold" />
+              <TextBlock x:Name="MemoryUnit" FontSize="13" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock x:Name="MemoryUsageText" Classes="detail" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="N/A" TextAlignment="Right" />
+            <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Background="Transparent">
+              <Rectangle x:Name="MemoryBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+              </Rectangle>
+            </Border>
+          </Grid>
+          <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="38,92,*" ToolTip.Tip="GPU使用率・推定温度・消費電力">
+            <TextBlock Classes="label" Text="GPU" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0">
+              <TextBlock x:Name="GpuText" Text="N/A" FontSize="24" FontWeight="SemiBold" />
+              <TextBlock x:Name="GpuUnit" FontSize="13" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock x:Name="GpuTemperatureText" Classes="detail" Grid.Row="1" Grid.Column="1" Text="N/A" ToolTip.Tip="GPU温度*: 関連センサー群の最大値による推定" />
+            <TextBlock x:Name="GpuPowerText" Classes="detail" Grid.Row="1" Grid.Column="2" Text="N/A" TextAlignment="Right" ToolTip.Tip="GPU消費電力: 2サンプル平均" />
+            <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Background="Transparent">
+              <Rectangle x:Name="GpuBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+              </Rectangle>
+            </Border>
+          </Grid>
+          <Grid Height="48" RowDefinitions="29,19" ColumnDefinitions="38,*,*" ToolTip.Tip="Ethernet／Wi-Fiの送受信速度合計（仮想インターフェースは除外）">
+            <TextBlock Classes="label" Text="NET" />
+            <TextBlock Grid.Column="1" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FF5DCAA5" Text="▼ " /><Run x:Name="NetworkReceiveText" Text="N/A" /></TextBlock>
+            <TextBlock Grid.Column="2" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FFEF9F27" Text="▲ " /><Run x:Name="NetworkSendText" Text="N/A" /></TextBlock>
+            <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,*">
+              <TextBlock x:Name="NetworkPeakLabel" Text="60s max" FontSize="11" Foreground="#FFB0B0B0" />
+              <TextBlock x:Name="NetworkPeakReceiveText" Grid.Column="1" Text="--" FontSize="11" TextAlignment="Right" Foreground="#FF5DCAA5" />
+              <TextBlock x:Name="NetworkPeakSendText" Grid.Column="2" Text="--" FontSize="11" TextAlignment="Right" Foreground="#FFEF9F27" />
+            </Grid>
+          </Grid>
+        </StackPanel>
+        </StackPanel>
+        <StackPanel x:Name="ReducedContentPanel" Width="150" Height="236" Margin="0" IsVisible="False">
+          <StackPanel Margin="8" Spacing="4">
+            <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="32,*" ToolTip.Tip="CPU">
+              <TextBlock Classes="label" FontSize="10.5" Text="CPU" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock x:Name="ReducedCpuText" Text="N/A" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="ReducedCpuUnit" FontSize="11" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+              </StackPanel>
+              <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,*">
+                <TextBlock x:Name="ReducedCpuTemperatureText" FontSize="9" Foreground="#FF7DC8FF" Text="N/A" ToolTip.Tip="温度*: 関連センサー群の最大値による推定" />
+                <TextBlock x:Name="ReducedCpuPeakText" Grid.Column="1" FontSize="9" Foreground="#FF7DC8FF" Text="60s max --" TextAlignment="Right" />
+              </Grid>
+              <Border Grid.Row="3" Grid.ColumnSpan="2" Background="Transparent">
+                <Rectangle x:Name="ReducedCpuBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                  <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+                </Rectangle>
+              </Border>
+            </Grid>
+            <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="32,*">
+              <TextBlock Classes="label" FontSize="10.5" Text="MEM" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock x:Name="ReducedMemoryText" Text="N/A" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="ReducedMemoryUnit" FontSize="11" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+              </StackPanel>
+              <Border Grid.Row="3" Grid.ColumnSpan="2" Background="Transparent">
+                <Rectangle x:Name="ReducedMemoryBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                  <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+                </Rectangle>
+              </Border>
+            </Grid>
+            <Grid Height="48" RowDefinitions="29,14,0,5" ColumnDefinitions="32,*" ToolTip.Tip="GPU使用率・推定温度・消費電力">
+              <TextBlock Classes="label" FontSize="10.5" Text="GPU" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock x:Name="ReducedGpuText" Text="N/A" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="ReducedGpuUnit" FontSize="11" Foreground="#FFB0B0B0" VerticalAlignment="Center" />
+              </StackPanel>
+              <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,*">
+                <TextBlock x:Name="ReducedGpuTemperatureText" FontSize="9" Foreground="#FF7DC8FF" Text="N/A" ToolTip.Tip="温度*: 関連センサー群の最大値による推定" />
+                <TextBlock x:Name="ReducedGpuPowerText" Grid.Column="1" FontSize="9" Foreground="#FF7DC8FF" Text="N/A" TextAlignment="Right" />
+              </Grid>
+              <Border Grid.Row="3" Grid.ColumnSpan="2" Background="Transparent">
+                <Rectangle x:Name="ReducedGpuBar" Fill="#FF7DC8FF" RenderTransformOrigin="0%,50%">
+                  <Rectangle.RenderTransform><ScaleTransform ScaleX="0" /></Rectangle.RenderTransform>
+                </Rectangle>
+              </Border>
+            </Grid>
+            <Grid Height="64" RowDefinitions="24,16,12,12" ColumnDefinitions="42,10,*" ToolTip.Tip="Ethernet／Wi-Fiの送受信速度合計（仮想インターフェースは除外）">
+              <TextBlock Classes="label" FontSize="10.5" Text="NET" />
+              <TextBlock Grid.Column="1" FontSize="13" Text="▼" Foreground="#FF5DCAA5" VerticalAlignment="Bottom" />
+              <TextBlock x:Name="ReducedNetworkReceiveText" Grid.Column="2" FontSize="13" Text="N/A" TextAlignment="Right" VerticalAlignment="Bottom" />
+              <TextBlock Grid.Row="1" Grid.Column="1" FontSize="13" Text="▲" Foreground="#FFEF9F27" />
+              <TextBlock x:Name="ReducedNetworkSendText" Grid.Row="1" Grid.Column="2" FontSize="13" Text="N/A" TextAlignment="Right" />
+              <TextBlock x:Name="ReducedNetworkPeakLabel" Grid.Row="2" Text="60s max" FontSize="10" Foreground="#FFB0B0B0" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="▼" FontSize="10" Foreground="#FF5DCAA5" />
+              <TextBlock x:Name="ReducedNetworkPeakReceiveText" Grid.Row="2" Grid.Column="2" Text="--" FontSize="10" TextAlignment="Right" Foreground="#FF5DCAA5" />
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="▲" FontSize="10" Foreground="#FFEF9F27" />
+              <TextBlock x:Name="ReducedNetworkPeakSendText" Grid.Row="3" Grid.Column="2" Text="--" FontSize="10" TextAlignment="Right" Foreground="#FFEF9F27" />
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+    </Viewbox>
   </Border>
 </Window>

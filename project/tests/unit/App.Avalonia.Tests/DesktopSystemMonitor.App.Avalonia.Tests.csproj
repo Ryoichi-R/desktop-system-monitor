@@ -1,24 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
     <RootNamespace>DesktopSystemMonitor.App.Avalonia.Tests</RootNamespace>
     <AssemblyName>DesktopSystemMonitor.App.Avalonia.Tests</AssemblyName>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <MacAvaloniaOnly>true</MacAvaloniaOnly>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CA1707;CA2007</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia.Headless.XUnit" Version="11.3.20" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.20" />
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\DesktopSystemMonitor.App\DesktopSystemMonitor.App.csproj" />
+    <!-- The product project is multi-targeted for Windows and macOS.  This test
+         project is the macOS/Avalonia graph; selecting the net10.0 leg here
+         prevents MSBuild from resolving the WindowsDesktop reference on macOS. -->
+    <ProjectReference Include="..\..\..\src\DesktopSystemMonitor.App\DesktopSystemMonitor.App.csproj"
+                      SetTargetFramework="TargetFramework=net10.0" />
   </ItemGroup>
 </Project>

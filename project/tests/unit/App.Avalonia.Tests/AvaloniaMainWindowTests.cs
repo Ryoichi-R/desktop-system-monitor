@@ -169,18 +169,19 @@ public sealed class AvaloniaMainWindowTests
         window.MouseUp(new Point(20, 20), MouseButton.Right);
         var menu = window.GetVisualDescendants().OfType<Border>().Select(b => b.ContextMenu).First(m => m is not null)!;
         Assert.True(menu.IsOpen);
-        var scaleMenu = (MenuItem)menu.Items[1]!;
+        var appearance = menu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "表示");
+        var scaleMenu = appearance.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "表示倍率");
         double[] widths = [140, 210, 280, 350, 420];
         for (int i = 0; i < widths.Length; i++)
         {
             ((MenuItem)scaleMenu.Items[i + 1]!).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Assert.Equal(widths[i], window.Width);
         }
-        MenuItem displayMode = menu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "表示形式");
+        MenuItem displayMode = appearance.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "表示形式");
         ((MenuItem)displayMode.Items[1]!).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.Equal(225, window.Width);
         Assert.True(window.FindControl<StackPanel>("ReducedContentPanel")!.IsVisible);
-        MenuItem topmost = menu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "常に手前に表示");
+        MenuItem topmost = appearance.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "常に手前に表示");
         topmost.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.True(window.Topmost);
         MenuItem exit = menu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "終了");
@@ -262,18 +263,20 @@ public sealed class AvaloniaMainWindowTests
                 var tray = Assert.Single(TrayIcon.GetIcons(app)!);
                 Assert.NotNull(tray.Icon);
                 Assert.True(tray.IsVisible);
-                Assert.Equal(15, tray.Menu!.Items.Count);
+                Assert.Equal("終了", Assert.IsType<NativeMenuItem>(tray.Menu!.Items[^1]).Header);
+                Assert.IsType<NativeMenuItemSeparator>(tray.Menu.Items[^2]);
+                Assert.Contains(tray.Menu.Items.OfType<NativeMenuItem>(), item => item.Header == "設定…");
                 window.SetWidgetScale(1.25);
                 window.ToggleTopmost();
-                var scaleMenu = Assert.IsType<NativeMenuItem>(tray.Menu.Items[1]);
+                var appearance = Assert.IsType<NativeMenuItem>(tray.Menu.Items[1]).Menu!;
+                var scaleMenu = Assert.IsType<NativeMenuItem>(appearance.Items[0]);
                 Assert.True(Assert.IsType<NativeMenuItem>(scaleMenu.Menu!.Items[4]).IsChecked);
                 Assert.False(Assert.IsType<NativeMenuItem>(scaleMenu.Menu.Items[1]).IsChecked);
-                var displayMode = Assert.IsType<NativeMenuItem>(tray.Menu.Items[2]);
+                var displayMode = Assert.IsType<NativeMenuItem>(appearance.Items[1]);
                 Assert.True(Assert.IsType<NativeMenuItem>(displayMode.Menu!.Items[0]).IsChecked);
-                Assert.True(Assert.IsType<NativeMenuItem>(tray.Menu.Items[3]).IsChecked);
-                Assert.False(Assert.IsType<NativeMenuItem>(tray.Menu.Items[5]).IsChecked);
-                Assert.False(Assert.IsType<NativeMenuItem>(tray.Menu.Items[6]).IsChecked);
-                Assert.False(Assert.IsType<NativeMenuItem>(tray.Menu.Items[7]).IsChecked);
+                Assert.True(Assert.IsType<NativeMenuItem>(appearance.Items[2]).IsChecked);
+                Assert.False(Assert.IsType<NativeMenuItem>(appearance.Items[3]).IsChecked);
+                Assert.False(Assert.IsType<NativeMenuItem>(appearance.Items[4]).IsChecked);
                 window.SetDisplayMode(WidgetDisplayMode.Reduced);
                 Assert.True(Assert.IsType<NativeMenuItem>(displayMode.Menu.Items[1]).IsChecked);
                 Assert.False(Assert.IsType<NativeMenuItem>(displayMode.Menu.Items[0]).IsChecked);

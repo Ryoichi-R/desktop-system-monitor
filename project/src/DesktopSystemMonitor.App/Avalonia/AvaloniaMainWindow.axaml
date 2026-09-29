@@ -12,33 +12,39 @@
   <Border x:Name="WidgetBackground" Background="Transparent" PointerPressed="OnWidgetPointerPressed">
     <Border.ContextMenu>
       <ContextMenu>
-        <MenuItem x:Name="StatusMenu" Header="CPU・メモリ: 接続待ち" IsEnabled="False" />
-        <MenuItem Header="表示倍率">
-          <MenuItem Header="倍率を入力…（50〜150%）" Click="OnScaleCustom" />
-          <MenuItem x:Name="Scale50Menu" ToggleType="Radio" Header="50%" Click="OnScale50" />
-          <MenuItem x:Name="Scale75Menu" ToggleType="Radio" Header="75%" Click="OnScale75" />
-          <MenuItem x:Name="ScaleNormalMenu" ToggleType="Radio" Header="100%" Click="OnScaleNormal" />
-          <MenuItem x:Name="ScaleMediumMenu" ToggleType="Radio" Header="125%" Click="OnScaleMedium" />
-          <MenuItem x:Name="ScaleLargeMenu" ToggleType="Radio" Header="150%" Click="OnScaleLarge" />
+        <MenuItem Header="設定…" Click="OnSettings" />
+        <Separator />
+        <MenuItem Header="表示">
+          <MenuItem Header="表示倍率">
+            <MenuItem Header="倍率を入力…（50〜150%）" Click="OnScaleCustom" />
+            <MenuItem x:Name="Scale50Menu" ToggleType="Radio" Header="50%" Click="OnScale50" />
+            <MenuItem x:Name="Scale75Menu" ToggleType="Radio" Header="75%" Click="OnScale75" />
+            <MenuItem x:Name="ScaleNormalMenu" ToggleType="Radio" Header="100%" Click="OnScaleNormal" />
+            <MenuItem x:Name="ScaleMediumMenu" ToggleType="Radio" Header="125%" Click="OnScaleMedium" />
+            <MenuItem x:Name="ScaleLargeMenu" ToggleType="Radio" Header="150%" Click="OnScaleLarge" />
+          </MenuItem>
+          <MenuItem Header="表示形式">
+            <MenuItem x:Name="DisplayModeStandardMenu" ToggleType="Radio" Header="通常版（280 DIP）" Click="OnDisplayModeStandard" />
+            <MenuItem x:Name="DisplayModeReducedMenu" ToggleType="Radio" Header="縮小版（150 DIP）" Click="OnDisplayModeReduced" />
+          </MenuItem>
+          <MenuItem x:Name="TopmostMenu" ToggleType="CheckBox" Header="常に手前に表示" Click="OnToggleTopmost" />
+          <MenuItem x:Name="DesktopLayerMenu" ToggleType="CheckBox" Header="デスクトップ最背面" Click="OnToggleDesktopLayer" />
+          <MenuItem x:Name="ClickThroughMenu" ToggleType="CheckBox" Header="クリックを透過" Click="OnToggleClickThrough" />
+          <MenuItem x:Name="FullScreenHideMenu" Header="全画面時に自動で隠す" ToggleType="CheckBox" Click="OnFullScreenHiding" />
         </MenuItem>
-        <MenuItem x:Name="DiagnosticLoggingMenu" Header="診断ログを記録" ToggleType="CheckBox" Click="OnDiagnosticLogging" />
-        <MenuItem Header="高負荷プロセス…" Click="OnProcessDetails" />
-        <MenuItem x:Name="FullScreenHideMenu" Header="全画面時に自動で隠す" ToggleType="CheckBox" Click="OnFullScreenHiding" />
         <MenuItem Header="ディスクの読み書き…" Click="OnDiskDetails" />
-        <MenuItem Header="表示形式">
-          <MenuItem x:Name="DisplayModeStandardMenu" ToggleType="Radio" Header="通常版（280 DIP）" Click="OnDisplayModeStandard" />
-          <MenuItem x:Name="DisplayModeReducedMenu" ToggleType="Radio" Header="縮小版（150 DIP）" Click="OnDisplayModeReduced" />
+        <MenuItem Header="高負荷プロセス…" Click="OnProcessDetails" />
+        <MenuItem Header="その他">
+          <MenuItem x:Name="CpuPeakWindowMenu" Header="CPU最大値の集計期間" />
+          <MenuItem x:Name="NetworkPeakWindowMenu" Header="ネットワーク最大値の集計期間" />
+          <MenuItem x:Name="StartAtLoginMenu" ToggleType="CheckBox" Header="ログイン時に自動起動" Click="OnToggleStartAtLogin" />
+          <MenuItem x:Name="DiagnosticLoggingMenu" Header="診断ログを記録" ToggleType="CheckBox" Click="OnDiagnosticLogging" />
+          <MenuItem x:Name="RefreshButton" Header="状態を再確認" Click="OnRefreshClick" />
+          <MenuItem x:Name="StatusMenu" Header="CPU・メモリ: 接続待ち" IsEnabled="False" />
+          <MenuItem x:Name="SettingsMenu" Header="設定はこの起動中のみ有効" IsEnabled="False" />
         </MenuItem>
-        <MenuItem x:Name="TopmostMenu" ToggleType="CheckBox" Header="常に手前に表示" Click="OnToggleTopmost" />
-        <MenuItem x:Name="DesktopLayerMenu" ToggleType="CheckBox" Header="デスクトップ最背面" Click="OnToggleDesktopLayer" />
-        <MenuItem x:Name="ClickThroughMenu" ToggleType="CheckBox" Header="クリックを透過" Click="OnToggleClickThrough" />
-        <MenuItem x:Name="StartAtLoginMenu" ToggleType="CheckBox" Header="ログイン時に自動起動" Click="OnToggleStartAtLogin" />
-        <MenuItem x:Name="RefreshButton" Header="状態を再確認" Click="OnRefreshClick" />
         <Separator />
         <MenuItem Header="終了" Click="OnQuit" />
-        <MenuItem x:Name="CpuPeakWindowMenu" Header="CPU最大値の集計期間" />
-        <MenuItem x:Name="NetworkPeakWindowMenu" Header="ネットワーク最大値の集計期間" />
-        <MenuItem x:Name="SettingsMenu" Header="設定はこの起動中のみ有効" IsEnabled="False" />
       </ContextMenu>
     </Border.ContextMenu>
     <Viewbox Stretch="Fill">

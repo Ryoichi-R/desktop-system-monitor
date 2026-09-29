@@ -87,6 +87,16 @@ if ($loginAgent -notin @('true', '1')) {
 }
 
 $resources = Join-Path $contents 'Resources'
+$iconName = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleIconFile'
+if ($iconName -ne 'DesktopSystemMonitor.icns') { throw 'Unexpected application icon name.' }
+$iconPath = Join-Path $resources $iconName
+if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) { throw 'Application icon is missing.' }
+$iconBytes = [IO.File]::ReadAllBytes($iconPath)
+if ($iconBytes.Length -le 8 -or [Text.Encoding]::ASCII.GetString($iconBytes, 0, 4) -ne 'icns') {
+    throw 'Application icon is not a valid ICNS container.'
+}
+Invoke-Checked -FilePath '/usr/bin/sips' -ArgumentList @('-g', 'pixelWidth', '-g', 'pixelHeight', $iconPath) `
+    -FailureMessage 'Application icon cannot be decoded.' | Out-Null
 foreach ($relativePath in @('THIRD-PARTY-NOTICES.md', 'dependency-inventory.json', 'licenses/Avalonia-12.1.3/LICENSE.txt', 'licenses/MicroCom.Runtime-0.11.6/LICENSE.txt', 'licenses/Tmds.DBus.Protocol-0.94.1/LICENSE.txt', 'licenses/skiasharp.nativeassets.macos-3.119.4/LICENSE.txt', 'licenses/harfbuzzsharp.nativeassets.macos-8.3.1.3/LICENSE.txt')) {
     if (-not (Test-Path -LiteralPath (Join-Path $resources $relativePath) -PathType Leaf)) { throw "Missing bundle notice: $relativePath" }
 }

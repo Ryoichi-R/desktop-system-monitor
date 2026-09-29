@@ -231,6 +231,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     {
         Screens.Changed -= OnScreensChanged;
         Program.Diagnostics.Record(MacDiagnosticEvent.MainWindowClosed);
+        _settingsWindow?.Close();
         _scaleInput?.Close();
         _diskDetails?.Close();
         _processDetails?.Close();
@@ -352,6 +353,20 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     }
 
     private void OnDiskDetails(object? sender, RoutedEventArgs e) => ShowDiskDetails();
+
+    private MacSettingsWindow? _settingsWindow;
+    internal MacSettingsWindow? SettingsWindow => _settingsWindow;
+
+    internal void ShowSettings()
+    {
+        if (_settingsWindow is not null) { _settingsWindow.Activate(); return; }
+        _settingsWindow = new MacSettingsWindow(this);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    private void OnSettings(object? sender, RoutedEventArgs e) => ShowSettings();
 
     private ScaleInputWindow? _scaleInput;
 

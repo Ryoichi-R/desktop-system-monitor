@@ -49,72 +49,43 @@ public sealed class AvaloniaApp : Application
                 reducedMode.Click += (_, _) => window.SetDisplayMode(WidgetDisplayMode.Reduced);
                 displayMode.Menu.Items.Add(standardMode);
                 displayMode.Menu.Items.Add(reducedMode);
-                var peakWindow = new NativeMenuItem("ネットワーク最大値の集計期間") { Menu = new NativeMenu() };
-                var peakItems = new List<(NativeMenuItem Item, int Seconds)>();
-                foreach (int seconds in new[] { 10, 20, 30, 60 })
-                {
-                    var item = new NativeMenuItem($"過去{seconds}秒") { ToggleType = MenuItemToggleType.Radio, IsChecked = window.NetworkPeakWindowSeconds == seconds };
-                    item.Click += (_, _) => window.SetNetworkPeakWindow(seconds);
-                    peakWindow.Menu.Items.Add(item);
-                    peakItems.Add((item, seconds));
-                }
-                var cpuPeakWindow = new NativeMenuItem("CPU最大値の集計期間") { Menu = new NativeMenu() };
-                var cpuPeakItems = new List<(NativeMenuItem Item, int Seconds)>();
-                foreach (int seconds in new[] { 10, 20, 30, 60 })
-                {
-                    var item = new NativeMenuItem($"過去{seconds}秒") { ToggleType = MenuItemToggleType.Radio, IsChecked = window.CpuPeakWindowSeconds == seconds };
-                    item.Click += (_, _) => window.SetCpuPeakWindow(seconds);
-                    cpuPeakWindow.Menu.Items.Add(item);
-                    cpuPeakItems.Add((item, seconds));
-                }
-                var settingsStatus = new NativeMenuItem(window.SettingsMessage) { IsEnabled = false };
                 var desktopLayer = new NativeMenuItem("デスクトップ最背面") { ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.DesktopLayer };
                 desktopLayer.Click += (_, _) => window.ToggleDesktopLayer();
                 var clickThrough = new NativeMenuItem("クリックを透過") { ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.ClickThrough };
                 clickThrough.Click += (_, _) => window.ToggleClickThrough();
-                var startAtLogin = new NativeMenuItem("ログイン時に自動起動") { ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.StartAtLogin };
-                startAtLogin.Click += (_, _) => window.ToggleStartAtLogin();
                 var fullScreenHide = new NativeMenuItem("全画面時に自動で隠す") { ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.HideWhenFullScreen };
                 fullScreenHide.Click += (_, _) => window.ToggleFullScreenHiding();
-                var diagnosticLogging = new NativeMenuItem("診断ログを記録") { ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.DiagnosticLogging };
-                diagnosticLogging.Click += (_, _) => window.ToggleDiagnosticLogging();
                 window.WidgetSettingsChanged += (_, _) =>
                 {
-                    diagnosticLogging.IsChecked = window.DiagnosticLogging;
                     fullScreenHide.IsChecked = window.HideWhenFullScreen;
                     topmost.IsChecked = window.Topmost;
                     desktopLayer.IsChecked = window.DesktopLayer;
                     clickThrough.IsChecked = window.ClickThrough;
-                    startAtLogin.IsChecked = window.StartAtLogin;
                     foreach (var entry in scaleItems) entry.Item.IsChecked = window.WidgetScale == entry.Scale;
                     standardMode.IsChecked = window.DisplayMode == WidgetDisplayMode.Standard;
                     reducedMode.IsChecked = window.DisplayMode == WidgetDisplayMode.Reduced;
-                    foreach (var entry in peakItems) entry.Item.IsChecked = window.NetworkPeakWindowSeconds == entry.Seconds;
-                    foreach (var entry in cpuPeakItems) entry.Item.IsChecked = window.CpuPeakWindowSeconds == entry.Seconds;
-                    settingsStatus.Header = window.SettingsMessage;
                 };
                 var quit = new NativeMenuItem("終了");
                 quit.Click += (_, _) => desktop.Shutdown();
                 var menu = new NativeMenu();
-                menu.Items.Add(show);
-                menu.Items.Add(scale);
-                menu.Items.Add(displayMode);
-                menu.Items.Add(topmost);
-                menu.Items.Add(settingsStatus);
-                menu.Items.Add(desktopLayer);
-                menu.Items.Add(clickThrough);
-                menu.Items.Add(startAtLogin);
-                menu.Items.Add(quit);
-                menu.Items.Add(peakWindow);
-                menu.Items.Add(cpuPeakWindow);
+                var settings = new NativeMenuItem("設定…");
+                settings.Click += (_, _) => window.ShowSettings();
                 var diskDetails = new NativeMenuItem("ディスクの読み書き…");
                 diskDetails.Click += (_, _) => window.ShowDiskDetails();
-                menu.Items.Add(diskDetails);
                 var processes = new NativeMenuItem("高負荷プロセス…");
                 processes.Click += (_, _) => window.ShowProcessDetails();
+                var appearance = new NativeMenuItem("表示") { Menu = new NativeMenu() };
+                foreach (var item in new[] { scale, displayMode, topmost, desktopLayer, clickThrough, fullScreenHide })
+                    appearance.Menu.Items.Add(item);
+                menu.Items.Add(show);
+                menu.Items.Add(appearance);
+                menu.Items.Add(new NativeMenuItemSeparator());
+                menu.Items.Add(diskDetails);
                 menu.Items.Add(processes);
-                menu.Items.Add(fullScreenHide);
-                menu.Items.Add(diagnosticLogging);
+                menu.Items.Add(new NativeMenuItemSeparator());
+                menu.Items.Add(settings);
+                menu.Items.Add(new NativeMenuItemSeparator());
+                menu.Items.Add(quit);
                 using Stream icon = typeof(AvaloniaApp).Assembly.GetManifestResourceStream("DesktopSystemMonitor.App.MacTray.ico")!;
                 TrayIcon.SetIcons(this, new TrayIcons { new TrayIcon { Icon = new WindowIcon(icon), ToolTipText = "Desktop System Monitor", Menu = menu, IsVisible = true } });
             }

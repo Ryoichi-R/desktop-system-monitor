@@ -17,7 +17,16 @@ public sealed class MacCoverageTests
         }
         else
         {
-            Assert.Throws<ArgumentException>(() => new MacAppPathProvider());
+            // Off macOS the result depends on whether the platform reports a usable home directory.
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (Path.IsPathFullyQualified(home))
+            {
+                Assert.StartsWith(home, new MacAppPathProvider().SettingsFilePath, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Throws<ArgumentException>(() => new MacAppPathProvider());
+            }
         }
     }
 

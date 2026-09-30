@@ -19,6 +19,10 @@
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Mac/ is its own project (DesktopSystemMonitor.IntegrationTests.Mac.csproj). -->
+    <Compile Remove="Mac/**" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\DesktopSystemMonitor.Windows\DesktopSystemMonitor.Windows.csproj" />
   </ItemGroup>
 </Project>

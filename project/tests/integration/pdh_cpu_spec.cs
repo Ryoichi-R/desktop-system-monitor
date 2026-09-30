@@ -16,9 +16,21 @@ public sealed class PdhCpuTests
         const string path = @"\Processor Information(_Total)\% Processor Time";
         Assert.True(query.TryAddCounter(path));
         Assert.True(query.Collect());
-        await Task.Delay(250);
-        Assert.True(query.Collect());
-        Assert.True(query.TryGetDouble(path, out double value));
+        // PDH can report a not-yet-valid sample when the counter data has not advanced between
+        // two collections (about one read in five on a test machine). Collect again until a
+        // valid value appears, like the energy-meter test below.
+        double value = double.NaN;
+        bool read = false;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(3);
+        do
+        {
+            await Task.Delay(250);
+            Assert.True(query.Collect());
+            read = query.TryGetDouble(path, out value);
+        }
+        while (!read && DateTimeOffset.UtcNow < deadline);
+
+        Assert.True(read, "no valid % Processor Time sample within 3 s");
         Assert.True(double.IsFinite(value));
     }
 

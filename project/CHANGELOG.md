@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+- Excluded `tests/integration/Mac/` from the Windows integration test project
+  so that it builds; that folder has its own project.
 - Fixed the object-initializer formatting that made
   `dotnet format --verify-no-changes` fail in the Avalonia app and the Mac
   sensor host.
+- Made two tests independent of the machine they run on: the PDH CPU counter
+  integration test now collects again until PDH returns a valid sample (about
+  one read in five was transiently invalid), and the Mac path provider test
+  no longer assumes that a non-macOS host has no home directory.
 - Fixed the settings window (and the high-load-processes window) sinking
   behind other applications when the widget's layer mode is "デスクトップ上"
   (`OnDesktop`/BottomMost). The settings window is owned by the widget, and

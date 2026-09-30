@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed the object-initializer formatting that made
+  `dotnet format --verify-no-changes` fail in the Avalonia app and the Mac
+  sensor host.
 - Fixed the settings window (and the high-load-processes window) sinking
   behind other applications when the widget's layer mode is "デスクトップ上"
   (`OnDesktop`/BottomMost). The settings window is owned by the widget, and

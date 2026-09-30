@@ -110,8 +110,13 @@ internal sealed class MacSettingsWindow : Window
 
     private static NumericUpDown Number(int minimum, int maximum) => new()
     {
-        Minimum = minimum, Maximum = maximum, Increment = 1, FormatString = "0",
-        AllowSpin = true, ClipValueToMinMax = true, MinWidth = 120,
+        Minimum = minimum,
+        Maximum = maximum,
+        Increment = 1,
+        FormatString = "0",
+        AllowSpin = true,
+        ClipValueToMinMax = true,
+        MinWidth = 120,
     };
 
     private static TextBlock Hint(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Opacity = 0.7 };

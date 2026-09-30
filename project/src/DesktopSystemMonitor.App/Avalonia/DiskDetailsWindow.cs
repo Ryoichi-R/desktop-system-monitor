@@ -22,7 +22,8 @@ internal sealed class DiskDetailsWindow : Window
         close.Click += (_, _) => Close();
         Content = new StackPanel
         {
-            Margin = new Thickness(20), Spacing = 12,
+            Margin = new Thickness(20),
+            Spacing = 12,
             Children =
             {
                 new TextBlock { Text = "物理ディスクの読み書き速度（合計）" },

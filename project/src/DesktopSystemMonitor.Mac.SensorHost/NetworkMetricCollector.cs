@@ -51,7 +51,8 @@ internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
                 _baselines[counter.Index] = baseline with { Counter = counter };
                 result.Add(new()
                 {
-                    InterfaceIndex = counter.Index, Name = counter.Name,
+                    InterfaceIndex = counter.Index,
+                    Name = counter.Name,
                     ReceiveBytesPerSecond = receive.IsWarmingUp ? SensorHostMetricValue.WarmingUp() : SensorHostMetricValue.Ok(receive.RatePerSecond, now),
                     SendBytesPerSecond = send.IsWarmingUp ? SensorHostMetricValue.WarmingUp() : SensorHostMetricValue.Ok(send.RatePerSecond, now),
                 });

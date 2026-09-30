@@ -28,7 +28,8 @@ internal sealed class ScaleInputWindow : Window
         cancel.Click += (_, _) => Close();
         Content = new StackPanel
         {
-            Margin = new Thickness(16), Spacing = 10,
+            Margin = new Thickness(16),
+            Spacing = 10,
             Children =
             {
                 new TextBlock { Text = "表示倍率（%）" }, PercentInput, ValidationMessage,

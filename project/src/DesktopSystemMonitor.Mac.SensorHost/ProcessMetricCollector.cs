@@ -42,7 +42,8 @@ internal sealed class ProcessMetricCollector(Func<ProcessCounters> read)
                     if (!double.IsFinite(cpu) || cpu is < 0 or > 100) continue;
                     result.Add(new()
                     {
-                        ProcessId = value.Pid, Name = value.Name,
+                        ProcessId = value.Pid,
+                        Name = value.Name,
                         CpuUtilizationPercent = SensorHostMetricValue.Ok(cpu, now),
                         // Physical footprint is not Windows private bytes; do not reuse that field.
                         PrivateBytes = SensorHostMetricValue.Unavailable(),

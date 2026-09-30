@@ -23,6 +23,41 @@ internal sealed class MemorySettingsStore : IMacWidgetSettingsStore
 public sealed class MacWidgetSettingsTests
 {
     [AvaloniaFact]
+    public async Task Temporary_Display_Clamp_Preserves_Preferred_Position_And_Scale_Across_Restart()
+    {
+        var store = new MemorySettingsStore { Settings = new() { Scale = 0.75, X = 1640, Y = 30 } };
+        await using (var first = new AvaloniaMainWindow())
+        {
+            first.EnableSettings(store);
+            first.RestorePosition(new(0, 0, 1000, 800), 1);
+            Assert.Equal(new PixelPoint(790, 30), first.Position);
+        }
+        Assert.Equal(1640, store.Settings.X);
+        Assert.Equal(30, store.Settings.Y);
+        await using var second = new AvaloniaMainWindow();
+        second.EnableSettings(store);
+        second.RestorePosition(new(0, 0, 2400, 1600), 1);
+        Assert.Equal(new PixelPoint(1640, 30), second.Position);
+        Assert.Equal(210, second.Width);
+        Assert.Equal(165, second.Height);
+        Assert.Equal(0.75, second.WidgetScale);
+    }
+
+    [AvaloniaFact]
+    public async Task User_Move_Replaces_Preferred_Position_After_Automatic_Clamp()
+    {
+        var store = new MemorySettingsStore { Settings = new() { X = 1640, Y = 30 } };
+        await using (var window = new AvaloniaMainWindow())
+        {
+            window.EnableSettings(store);
+            window.RestorePosition(new(0, 0, 1000, 800), 1);
+            window.Position = new(120, 80);
+        }
+        Assert.Equal(120, store.Settings.X);
+        Assert.Equal(80, store.Settings.Y);
+    }
+
+    [AvaloniaFact]
     public async Task Settings_Survive_Window_Restart_And_Menus_Stay_In_Sync()
     {
         var store = new MemorySettingsStore();

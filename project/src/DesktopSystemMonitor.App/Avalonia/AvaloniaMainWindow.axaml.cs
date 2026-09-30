@@ -31,6 +31,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _restoringSettings;
     private bool _positionReady;
+    private PixelPoint? _automaticPosition;
     internal event EventHandler? WidgetSettingsChanged;
     internal double WidgetScale => _settings.Scale;
     internal WidgetDisplayMode DisplayMode => _settings.DisplayMode;
@@ -85,6 +86,8 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         PositionChanged += (_, _) =>
         {
             if (!_positionReady || _restoringSettings || _disposed) return;
+            if (Position == _automaticPosition) return;
+            _automaticPosition = null;
             _settings = _settings with { X = Position.X, Y = Position.Y };
             _saveTimer.Stop();
             _saveTimer.Start();
@@ -404,6 +407,15 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         try
         {
             _settings = store.Load();
+            string? startupWarning = null;
+            if (_startupRegistry is MacStartupRegistry macStartup && Environment.ProcessPath is string currentExecutable)
+            {
+                try { macStartup.RefreshEnabledRegistration(currentExecutable); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    startupWarning = "自動起動先を更新できません。ログイン時に自動起動を設定し直してください";
+                }
+            }
             if (_startupRegistry is not null && Environment.ProcessPath is string executable)
                 _settings = _settings with { StartAtLogin = _startupRegistry.IsEnabled(executable) };
             Program.Diagnostics.Enabled = _settings.DiagnosticLogging;
@@ -413,7 +425,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
             SetCpuPeakWindow(_settings.CpuPeakWindowSeconds);
             Topmost = _settings.Topmost;
             _settingsStore = store;
-            SettingsMessage = "設定は自動保存されます";
+            SettingsMessage = startupWarning ?? "設定は自動保存されます";
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException)
         {
@@ -496,15 +508,24 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     private void RestorePosition()
     {
+        PixelPoint desired = _settings.X is int x && _settings.Y is int y ? new(x, y) : Position;
+        var screen = Screens.ScreenFromPoint(desired) ?? Screens.Primary;
+        if (screen is not null) RestorePosition(screen.WorkingArea, screen.Scaling);
+    }
+
+    internal void RestorePosition(PixelRect workingArea, double scaling)
+    {
         _restoringSettings = true;
         try
         {
             PixelPoint desired = _settings.X is int x && _settings.Y is int y ? new(x, y) : Position;
-            var screen = Screens.ScreenFromPoint(desired) ?? Screens.Primary;
-            if (screen is not null)
-                Position = ClampPosition(desired, screen.WorkingArea, Width, Height, screen.Scaling);
+            _automaticPosition = ClampPosition(desired, workingArea, Width, Height, scaling);
+            Position = _automaticPosition.Value;
             _positionReady = true;
-            _settings = _settings with { X = Position.X, Y = Position.Y };
+            // Keep the user's preferred coordinates through temporary login/display
+            // changes. Only an actual move should replace an existing preference.
+            if (_settings.X is null || _settings.Y is null)
+                _settings = _settings with { X = Position.X, Y = Position.Y };
         }
         finally { _restoringSettings = false; }
     }

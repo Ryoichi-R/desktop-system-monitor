@@ -6,6 +6,70 @@ namespace DesktopSystemMonitor.Mac.Tests;
 public sealed class MacStartupRegistryTests
 {
     [Fact]
+    public void Refresh_Migrates_Existing_OptIn_Even_When_Old_App_Is_Missing()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "dsm-startup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string oldApp = Path.Combine(root, "old-app");
+        string newApp = Path.Combine(root, "new-app");
+        var registry = new MacStartupRegistry(root);
+        try
+        {
+            File.WriteAllText(oldApp, "test");
+            File.WriteAllText(newApp, "test");
+            registry.Enable(oldApp);
+            File.Delete(oldApp);
+            registry.RefreshEnabledRegistration(newApp);
+            Assert.True(registry.IsEnabled(newApp));
+            Assert.False(registry.IsEnabled(oldApp));
+            string updated = File.ReadAllText(registry.PlistPath);
+            registry.RefreshEnabledRegistration(newApp);
+            Assert.Equal(updated, File.ReadAllText(registry.PlistPath));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Refresh_Does_Not_Enable_Disabled_Or_Invalid_Registration()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "dsm-startup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string app = Path.Combine(root, "app");
+        var registry = new MacStartupRegistry(root);
+        try
+        {
+            File.WriteAllText(app, "test");
+            registry.RefreshEnabledRegistration(app);
+            Assert.False(File.Exists(registry.PlistPath));
+            registry.Enable(app);
+            registry.Disable();
+            registry.RefreshEnabledRegistration(app);
+            Assert.False(File.Exists(registry.PlistPath));
+            File.WriteAllText(registry.PlistPath, "not xml");
+            registry.RefreshEnabledRegistration(app);
+            Assert.Equal("not xml", File.ReadAllText(registry.PlistPath));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Refresh_Failure_Keeps_Existing_Registration()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "dsm-startup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string app = Path.Combine(root, "app");
+        var registry = new MacStartupRegistry(root);
+        try
+        {
+            File.WriteAllText(app, "test");
+            registry.Enable(app);
+            Assert.Throws<FileNotFoundException>(() => registry.RefreshEnabledRegistration(Path.Combine(root, "missing")));
+            Assert.True(registry.IsEnabled(app));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public void Default_Constructor_Is_Usable_And_Relative_Homes_Are_Rejected()
     {
         var registry = new MacStartupRegistry();

@@ -29,25 +29,43 @@ public sealed class MacStartupRegistry : IStartupRegistry
 
     public bool IsEnabled(string executablePath)
     {
-        if (!TryGetAbsolutePath(executablePath, out string? expectedExecutable) || !File.Exists(_plistPath))
+        return TryGetAbsolutePath(executablePath, out string? expectedExecutable) &&
+            ReadEnabledExecutable() == expectedExecutable;
+    }
+
+    /// <summary>Carry an existing opt-in forward when the app is moved or updated.</summary>
+    public void RefreshEnabledRegistration(string executablePath)
+    {
+        string? registered = ReadEnabledExecutable();
+        if (registered is not null &&
+            TryGetAbsolutePath(executablePath, out string? current) && registered != current)
         {
-            return false;
+            Enable(current!);
+        }
+    }
+
+    private string? ReadEnabledExecutable()
+    {
+        if (!File.Exists(_plistPath))
+        {
+            return null;
         }
 
         try
         {
             XDocument document = XDocument.Load(_plistPath, LoadOptions.PreserveWhitespace);
             XElement? dictionary = document.Root?.Element("dict");
-            if (dictionary is null) return false;
+            if (dictionary is null) return null;
+            string? executable = ReadStringArrayFirst(dictionary, "ProgramArguments");
             return ReadString(dictionary, "Label") == Label &&
-                ReadStringArrayFirst(dictionary, "ProgramArguments") == expectedExecutable &&
+                TryGetAbsolutePath(executable, out _) &&
                 ReadBoolean(dictionary, "RunAtLoad") &&
                 ReadString(dictionary, "StandardOutPath") == "/dev/null" &&
-                ReadString(dictionary, "StandardErrorPath") == "/dev/null";
+                ReadString(dictionary, "StandardErrorPath") == "/dev/null" ? executable : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or XmlException)
         {
-            return false;
+            return null;
         }
     }
 

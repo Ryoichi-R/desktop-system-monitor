@@ -8,6 +8,9 @@ internal static partial class IpHelperInterop
     public const int IF_OPER_STATUS_UP = 1;
     // IF_TYPE_SOFTWARE_LOOPBACK
     public const uint IF_TYPE_SOFTWARE_LOOPBACK = 24;
+    // InterfaceAndOperStatusFlags bits (MIB_IF_ROW2)
+    public const byte IF_FLAG_HARDWARE_INTERFACE = 0x01;
+    public const byte IF_FLAG_FILTER_INTERFACE = 0x02;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public unsafe struct MIB_IF_ROW2

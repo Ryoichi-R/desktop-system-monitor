@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Fixed the Windows network speed being reported several times too high.
+  `GetIfTable2` also returns NDIS filter / intermediate-driver rows that carry
+  the same traffic as the physical adapter, and the automatic mode summed every
+  Up row; on the affected machine the total was exactly 7x the physical
+  adapter. The automatic mode now sums only hardware interfaces that are not
+  NDIS filters (`InterfaceAndOperStatusFlags`), decided on every sample, and
+  falls back to all non-filter rows when no Up hardware interface exists.
+  Rows that stay in the table keep their rate state when the selection
+  switches. Explicitly selected adapter LUIDs are still summed as specified.
+  Remaining limits (overlapping non-filter rows in the fallback mode,
+  hardware-flag-less adapters such as Bluetooth PAN) are documented in the
+  README and `docs/adr/001-metrics.md`.
 - Excluded `tests/integration/Mac/` from the Windows integration test project
   so that it builds; that folder has its own project.
 - Fixed the object-initializer formatting that made

@@ -222,6 +222,12 @@ dotnet run --project .\src\DesktopSystemMonitor.Diagnostics -- --seconds 120 --g
 - 複数GPUではDXGI表示名とセンサー側のGPU名が一致した場合だけ対応付ける。GPUが1台だけならその値を使用し、複数台で対応先が不明な場合は誤表示を避けて`N/A`にする。
 - GPU dedicated memory limit は DXGI から取得しており、integrated GPU で 0 を正当に返す環境ではその 0 をそのまま扱う（取得失敗は `N/A`）。
 - ネットワークカウンターは `GetIfTable2` の `InOctets` / `OutOctets` 差分で、パケットオーバーヘッドは含まない。プロバイダー請求量とは一致しない。
+- ネットワークの自動モードは、同じ通信を複数の行で重ねて数えないよう、ハードウェアのアダプター（NDIS フィルターを除く）だけを集計する。次の制限がある。
+  - Up のハードウェア行がない場合は、NDIS フィルター以外の全行を集計する。同じ通信を運ぶ複数の論理行や中間ドライバーの行は区別できず、重複が残り得る。
+  - 複数のハードウェア行が同じ通信を運ぶ構成は、重複を検出しない。
+  - Bluetooth PAN や一部の USB テザリングは、ハードウェアのアダプターとして報告されないことがあり、ほかに Up の物理アダプターがあると自動モードでは数えない。この場合は設定の `SelectedNetworkAdapterLuids` で LUID を指定する。
+  - VPN 利用時は、トンネル内の通信ではなく物理アダプターでカプセル化後のバイト数を表示する。Hyper-V の外部仮想スイッチ配下の仮想マシンの通信は、物理アダプターの値に含まれる。
+  - アダプターの出現・消失・カウンター減少の直後は、該当の行が 1 サンプル分 warm-up になり、表示が `--` になるか、その行を除いた値になる。異常な速度は表示しない。
 - 温度はLibreHardwareMonitorが公開するCPU package/coreおよびGPU coreセンサーのbest-effort値である。センサー非対応、対応先が曖昧な複数GPU、ARM64環境では`N/A`になり得る。
 - DISKは選択したphysical disk 1台だけを対象とする。read/writeはPDH counter intervalの平均であり、ファイル単位・プロセス単位の値ではない。Windows volumeが単一physical diskへ還元できない場合は推測で別diskへフォールバックせず、設定から明示選択する。取得不能時の行表示は短い`N/A`とし、理由はツールチップと設定画面に示す。
 - バッテリー残時間と充電完了時間は、直近約60秒の有効な放電率または充電率が続く仮定による概算で、`≈`を付ける。充電完了時間の推定は残量5%以上で開始し、1～4%では現在値と目標だけを表示する。充電終盤の出力低下、温度、PC負荷、充電器によって変動し、24時間履歴は保存しない。
@@ -251,7 +257,7 @@ Desktop System Monitorの第一者コードは[MIT License](../LICENSE)で提供
 - `ClickThrough`: bool
 - `StartWithWindows`: bool
 - `NetworkUnitSystem`: `DecimalBytes`（B/s～GB/sの自動切替）/ `DecimalBits`（bps～Gbpsの自動切替）/ `FixedKilobitsPerSecond`（10進Kb/s固定）
-- `SelectedNetworkAdapterLuids`: 空なら Up 状態の非 loopback をすべて集計
+- `SelectedNetworkAdapterLuids`: 空なら自動モード。Up 状態の非 loopback のうち、ハードウェアのネットワークアダプター（NDIS フィルターを除く）だけを集計する。該当する行がなければ、NDIS フィルター以外の行を集計する。LUID を指定した場合は、フラグにかかわらず指定した行だけを集計する。詳細と制限は[`001-metrics.md`](docs/adr/001-metrics.md)を参照
 - `PinnedGpuLuidHex`: 固定表示するGPUのLUID（空ならbusiest GPU）
 - `ShowDiskMetrics` / `ShowTemperatures` / `ShowBatteryEstimate` / `EnableHighLoadProcessDetails`: 任意機能。すべて既定`false`
 - `BatteryChargeTargetPercent`: `null`は自動、50～100の整数は手動充電目標

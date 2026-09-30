@@ -9,7 +9,8 @@
       - DesktopSystemMonitor.App.Avalonia.Tests: line coverage >= 90%
       - DesktopSystemMonitor.Mac.Tests: line coverage >= 90%
       - DesktopSystemMonitor.Mac.SensorHost.Tests: line coverage >= 90%
-    P/Invoke 宣言 / WPF は line 閾値から除外する。
+    P/Invoke 宣言 / WPF / プロセスのエントリーポイント (Avalonia の Program.cs) は line 閾値から除外する。
+    App.Avalonia.Tests の macOS 専用分岐 (OperatingSystem.IsMacOS()) は Windows では実行できず、Windows 上の値は macOS より低くなる。
 
 .PARAMETER OutputDir
     XML 出力先 (既定: coverage/desktop-system-monitor)
@@ -46,6 +47,8 @@ $targets = @(
         Csproj = 'tests/unit/App.Avalonia.Tests/DesktopSystemMonitor.App.Avalonia.Tests.csproj'
         Threshold = 90
         Include = 'DesktopSystemMonitor'
+        # Program.cs is the process entry point (Main) and cannot be started from a unit test.
+        ExcludeByFile = '**/Program.cs'
         Properties = @('MacAvaloniaOnly=true')
     },
     @{

@@ -19,6 +19,13 @@
 - Fixed the object-initializer formatting that made
   `dotnet format --verify-no-changes` fail in the Avalonia app and the Mac
   sensor host.
+- Added headless tests for the Avalonia main window (context-menu actions,
+  detail windows, live timer, screen changes, diagnostic logging) so that
+  `App.Avalonia.Tests` meets its 90% line-coverage gate on Windows. The
+  coverage script now excludes the Avalonia process entry point
+  (`Program.cs`); the macOS-only branches are still measured only on macOS.
+  `Program.Diagnostics` gained an internal setter so tests can redirect the
+  log away from the user profile.
 - Made two tests independent of the machine they run on: the PDH CPU counter
   integration test now collects again until PDH returns a valid sample (about
   one read in five was transiently invalid), and the Mac path provider test

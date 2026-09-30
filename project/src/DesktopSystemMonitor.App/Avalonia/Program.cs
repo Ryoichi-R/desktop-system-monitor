@@ -4,7 +4,7 @@ namespace DesktopSystemMonitor.App;
 
 internal static class Program
 {
-    internal static MacDiagnosticLog Diagnostics { get; } = new(new DesktopSystemMonitor.Mac.MacAppPathProvider().LogDirectory);
+    internal static MacDiagnosticLog Diagnostics { get; set; } = new(new DesktopSystemMonitor.Mac.MacAppPathProvider().LogDirectory);
 
     [STAThread]
     public static int Main(string[] args)

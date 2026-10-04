@@ -32,6 +32,193 @@ public sealed class WindowPlacementControllerTests
         Assert.Null(settings.Value.SavedMonitorDeviceName);
     }
 
+    [Theory]
+    [InlineData(WindowPlacementAnchor.TopRight, 1520, 8)]
+    [InlineData(WindowPlacementAnchor.BottomRight, 1520, 716)]
+    [InlineData(WindowPlacementAnchor.TopLeft, 8, 8)]
+    [InlineData(WindowPlacementAnchor.BottomLeft, 8, 716)]
+    public void preset_placement_uses_actual_physical_window_bounds(
+        WindowPlacementAnchor anchor,
+        double expectedLeft,
+        double expectedTop)
+    {
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Preset,
+                PlacementAnchor = anchor,
+                HorizontalMarginDip = 8,
+                VerticalMarginDip = 8,
+            }.Normalized(),
+        };
+        MonitorLayout layout = SingleMonitor(1920, 1032);
+        var surface = new FakeSurface { Width = 392, Height = 308, RequestedWidth = 224 };
+        using WindowPlacementController controller = CreateController(surface, () => layout, settings);
+
+        controller.PositionWindow();
+
+        Assert.Equal(expectedLeft, surface.Left);
+        Assert.Equal(expectedTop, surface.Top);
+        Assert.Equal(224, surface.RequestedWidth);
+        Assert.Equal(
+            anchor is WindowPlacementAnchor.TopRight or WindowPlacementAnchor.BottomRight ? 1912 : 8,
+            anchor is WindowPlacementAnchor.TopRight or WindowPlacementAnchor.BottomRight
+                ? surface.Left + surface.Width
+                : surface.Left);
+        Assert.Equal(
+            anchor is WindowPlacementAnchor.BottomLeft or WindowPlacementAnchor.BottomRight ? 1024 : 8,
+            anchor is WindowPlacementAnchor.BottomLeft or WindowPlacementAnchor.BottomRight
+                ? surface.Top + surface.Height
+                : surface.Top);
+        Assert.Equal(0, settings.UpdateCount);
+    }
+
+    [Fact]
+    public void mixed_dpi_physical_work_area_preserves_negative_monitor_origin()
+    {
+        var leftMonitor = new MonitorInfo("DISPLAY2", new Rect(-1280, 0, 1280, 720), 144)
+        {
+            PhysicalWorkArea = new Rect(-1920, 0, 1920, 1080),
+        };
+        var primary = new MonitorInfo("DISPLAY1", new Rect(0, 0, 1920, 1080), 96)
+        {
+            PhysicalWorkArea = new Rect(0, 0, 1920, 1080),
+        };
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Preset,
+                PlacementAnchor = WindowPlacementAnchor.TopRight,
+                SavedMonitorDeviceName = "DISPLAY2",
+                HorizontalMarginDip = 8,
+                VerticalMarginDip = 8,
+            }.Normalized(),
+        };
+        MonitorLayout layout = new([leftMonitor, primary], primary);
+        var surface = new FakeSurface { Width = 392, Height = 308 };
+        using WindowPlacementController controller = CreateController(surface, () => layout, settings);
+
+        controller.PositionWindow();
+
+        Assert.Equal(-404, surface.Left);
+        Assert.Equal(12, surface.Top);
+        Assert.Equal(-12, surface.Left + surface.Width);
+    }
+
+    [Fact]
+    public void current_window_dpi_controls_physical_margin_and_saved_dip_values()
+    {
+        var monitor = new MonitorInfo("DISPLAY1", new Rect(0, 0, 1920, 1032), 96)
+        {
+            PhysicalWorkArea = new Rect(0, 0, 1920, 1032),
+        };
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Preset,
+                PlacementAnchor = WindowPlacementAnchor.TopRight,
+                HorizontalMarginDip = 8,
+                VerticalMarginDip = 8,
+            }.Normalized(),
+        };
+        MonitorLayout layout = new([monitor], monitor);
+        var surface = new FakeSurface { Width = 392, Height = 308, CurrentDpi = 144 };
+        using WindowPlacementController controller = CreateController(surface, () => layout, settings);
+
+        controller.PositionWindow();
+        controller.PersistWindowPosition();
+
+        Assert.Equal(1516, surface.Left);
+        Assert.Equal(12, surface.Top);
+        Assert.Equal(144, settings.Value.SavedMonitorDpi);
+        Assert.Equal(1272, settings.Value.SavedRightEdgeDip);
+        Assert.Equal(1280, settings.Value.SavedWorkAreaWidthDip);
+    }
+
+    [Fact]
+    public void preview_does_not_persist_timer_reflow_or_shutdown_positions_and_cancel_clamps_original()
+    {
+        var settings = new SettingsHolder
+        {
+            Value = new AppSettings
+            {
+                PlacementMode = WindowPlacementMode.Preset,
+                PlacementAnchor = WindowPlacementAnchor.TopRight,
+            }.Normalized(),
+        };
+        MonitorLayout layout = SingleMonitor(1920, 1032);
+        var surface = new FakeSurface { Left = 1688, Top = 8, Width = 392, Height = 308 };
+        var persistTimer = new FakeTimer();
+        var reflowTimer = new FakeTimer();
+        using WindowPlacementController controller = CreateController(
+            surface,
+            () => layout,
+            settings,
+            persistTimer,
+            reflowTimer);
+        controller.BeginPlacementPreviewSession();
+        string message = controller.PreviewPlacement(settings.Value with
+        {
+            PlacementMode = WindowPlacementMode.Preset,
+            PlacementAnchor = WindowPlacementAnchor.BottomLeft,
+        });
+
+        surface.RaiseLocationChanged();
+        controller.FlushPendingWindowPosition();
+        surface.RaiseDisplayConfigurationChanged();
+        controller.CompletePendingDisplayReflow();
+        controller.FlushBeforeShutdown();
+
+        Assert.Contains("一時表示中", message, StringComparison.Ordinal);
+        Assert.Equal(8, surface.Left);
+        Assert.Equal(716, surface.Top);
+        Assert.Equal(0, settings.UpdateCount);
+        Assert.False(persistTimer.IsEnabled);
+
+        controller.CancelPlacementPreviewSession();
+
+        Assert.Equal(1520, surface.Left);
+        Assert.Equal(8, surface.Top);
+        Assert.Equal(0, settings.UpdateCount);
+        Assert.False(controller.PlacementPreviewActive);
+    }
+
+    [Fact]
+    public void committed_preview_reapplies_the_final_draft_and_releases_persistence_suppression()
+    {
+        var settings = new SettingsHolder();
+        MonitorLayout layout = SingleMonitor(1920, 1032);
+        var surface = new FakeSurface { Width = 392, Height = 308 };
+        var persistTimer = new FakeTimer();
+        using WindowPlacementController controller = CreateController(
+            surface,
+            () => layout,
+            settings,
+            persistTimer);
+        controller.BeginPlacementPreviewSession();
+        _ = controller.PreviewPlacement(settings.Value with
+        {
+            PlacementMode = WindowPlacementMode.Preset,
+            PlacementAnchor = WindowPlacementAnchor.TopLeft,
+        });
+
+        controller.CommitPlacementPreview(settings.Value with
+        {
+            PlacementMode = WindowPlacementMode.Preset,
+            PlacementAnchor = WindowPlacementAnchor.BottomRight,
+        });
+
+        Assert.Equal(1520, surface.Left);
+        Assert.Equal(716, surface.Top);
+        Assert.False(controller.PlacementPreviewActive);
+        surface.Left = 400;
+        surface.RaiseLocationChanged();
+        Assert.True(persistTimer.IsEnabled);
+    }
+
     [Fact]
     public void debounced_location_change_persists_the_stable_position()
     {
@@ -501,15 +688,26 @@ public sealed class WindowPlacementControllerTests
         public double Top { get; set; }
         public double Width { get; set; } = 280;
         public double Height { get; set; } = 200;
+        public double RequestedWidth { get; set; }
+        public Rect Bounds => new(Left, Top, Width, Height);
+        public double? CurrentDpi { get; set; }
         public bool IsLoaded { get; } = true;
+        public bool TrySetPosition(double left, double top)
+        {
+            Left = left;
+            Top = top;
+            return true;
+        }
         public event Action LocationChanged;
         public event Action Closing;
         public event Action DisplayConfigurationChanged;
+        public event Action BoundsChanged;
         public event Action UserMoveStarted;
         public event Action UserMoveCompleted;
         public void RaiseLocationChanged() => LocationChanged?.Invoke();
         public void RaiseClosing() => Closing?.Invoke();
         public void RaiseDisplayConfigurationChanged() => DisplayConfigurationChanged?.Invoke();
+        public void RaiseBoundsChanged() => BoundsChanged?.Invoke();
         public void RaiseUserMoveStarted() => UserMoveStarted?.Invoke();
         public void RaiseUserMoveCompleted() => UserMoveCompleted?.Invoke();
     }

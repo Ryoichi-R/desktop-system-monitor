@@ -395,17 +395,28 @@ public sealed class AppComposition : IDisposable
         _tray?.SetEditingEnabled(false);
         bool isOnDesktop = _settings.LayerMode == WindowLayerMode.OnDesktop;
         IDisposable? layerRepairLease = null;
+        AppSettings? settingsPersistedByDialog = null;
         var completion = new SettingsFlowCompletionScope(
             cleanup: () =>
             {
-                _settingsWindow = null;
-                _settingsFlowActive = false;
-                _tray?.SetEditingEnabled(!_settingsStore.IsReadOnly);
-                _tray?.SetState(
-                    _settings.ClickThrough,
-                    _settings.StartWithWindows,
-                    MapLayer(_settings.LayerMode));
-                _tray?.SetDisplayMode(_settings.DisplayMode);
+                try
+                {
+                    if (_windowPlacement?.PlacementPreviewActive == true)
+                    {
+                        _windowPlacement.CancelPlacementPreviewSession();
+                    }
+                }
+                finally
+                {
+                    _settingsWindow = null;
+                    _settingsFlowActive = false;
+                    _tray?.SetEditingEnabled(!_settingsStore.IsReadOnly);
+                    _tray?.SetState(
+                        _settings.ClickThrough,
+                        _settings.StartWithWindows,
+                        MapLayer(_settings.LayerMode));
+                    _tray?.SetDisplayMode(_settings.DisplayMode);
+                }
             },
             releaseLayerRepair: () => layerRepairLease?.Dispose(),
             reapplyWindowStyles: () =>
@@ -435,10 +446,42 @@ public sealed class AppComposition : IDisposable
             {
                 return;
             }
+            _windowPlacement?.BeginPlacementPreviewSession();
+
+            string? SaveDialogDraft(SettingsDraft edited, bool resetBatteryLearning)
+            {
+                AppSettings requested = SettingsEditMerge.Merge(_settings, edited, resetBatteryLearning);
+                bool saveAttempted = false;
+                bool PersistRequestedSettings()
+                {
+                    saveAttempted = true;
+                    if (!_batteryChargeState.PersistSettings(requested))
+                    {
+                        return false;
+                    }
+                    settingsPersistedByDialog = requested;
+                    return true;
+                }
+                bool saved = _windowPlacement is null
+                    ? PersistRequestedSettings()
+                    : _windowPlacement.CommitPlacementPreview(requested, PersistRequestedSettings);
+                if (!saved)
+                {
+                    _diagnostics.Record("placement-preview-commit-failure", null);
+                    return saveAttempted
+                        ? "設定を保存できませんでした。設定ファイルの書き込み権限や空き容量を確認してください。"
+                        : "表示位置を適用できなかったため、保存していません。表示位置を確認してもう一度お試しください。";
+                }
+                return null;
+            }
+
             var dialog = new SettingsWindow(
                 _settings,
                 context,
-                () => _windowPlacement?.CaptureCurrentWindowPosition(_settings) ?? _settings)
+                () => _windowPlacement?.CaptureCurrentWindowPosition(_settings) ?? _settings,
+                placement => _windowPlacement?.PreviewPlacement(placement)
+                    ?? "表示位置のプレビューを開始できませんでした。",
+                SaveDialogDraft)
             {
                 Owner = _mainWindow,
             };
@@ -455,15 +498,16 @@ public sealed class AppComposition : IDisposable
             dialog.RequestForegroundPresentation(useTopmostPulse: isOnDesktop);
             if (dialog.ShowDialog() != true || dialog.Result is not SettingsDraft edited)
             {
+                _windowPlacement?.CancelPlacementPreviewSession();
                 return;
             }
             _settingsWindow = null;
 
             AppSettings previousSettings = _settings;
-            AppSettings requested = SettingsEditMerge.Merge(
-                _settings,
-                edited,
-                dialog.ResetBatteryChargeLearningRequested);
+            AppSettings requested = settingsPersistedByDialog ?? SettingsEditMerge.Merge(
+                    _settings,
+                    edited,
+                    dialog.ResetBatteryChargeLearningRequested);
             if (requested.StartWithWindows != _settings.StartWithWindows)
             {
                 try
@@ -486,7 +530,10 @@ public sealed class AppComposition : IDisposable
 
             bool intervalChanged = requested.SamplingIntervalSeconds != _settings.SamplingIntervalSeconds;
             _settings = requested.Normalized();
-            _batteryChargeState.PersistSettings(_settings);
+            if (settingsPersistedByDialog is null || settingsPersistedByDialog != _settings)
+            {
+                _batteryChargeState.PersistSettings(_settings);
+            }
             bool batteryTargetChanged =
                 previousSettings.EffectiveBatteryChargeTargetPercent != _settings.EffectiveBatteryChargeTargetPercent;
             bool batteryVisibilityChanged = previousSettings.ShowBatteryEstimate != _settings.ShowBatteryEstimate;

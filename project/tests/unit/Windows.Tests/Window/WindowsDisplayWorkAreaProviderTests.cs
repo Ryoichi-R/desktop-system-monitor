@@ -15,5 +15,7 @@ public sealed class WindowsDisplayWorkAreaProviderTests
 
         Assert.NotEmpty(all);
         Assert.Contains(all, monitor => monitor == primary);
+        Assert.NotNull(primary.PhysicalWorkArea);
+        Assert.Equal(primary.PhysicalWorkArea, primary.WorkArea);
     }
 }

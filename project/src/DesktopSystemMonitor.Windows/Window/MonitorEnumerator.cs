@@ -4,14 +4,13 @@ using DesktopSystemMonitor.Core.Layout;
 namespace DesktopSystemMonitor.Windows.Window;
 
 /// <summary>
-/// Enumerates monitors via EnumDisplayMonitors + GetMonitorInfo, translating
-/// pixel rectangles into DIP using per-monitor DPI. Kept as a static helper so
-/// the WPF layer only sees the DIP-space <see cref="MonitorInfo"/>.
+/// Enumerates physical monitor work areas. The active window DPI is supplied by
+/// GetDpiForWindow at the WPF placement boundary; this avoids querying monitor
+/// DPI from a per-monitor-aware thread with GetDpiForMonitor.
 /// </summary>
 public static partial class MonitorEnumerator
 {
     private const int MONITORINFOF_PRIMARY = 1;
-    private const int MDT_EFFECTIVE_DPI = 0;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -41,9 +40,6 @@ public static partial class MonitorEnumerator
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEXW info);
 
-    [LibraryImport("shcore.dll")]
-    private static partial int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
-
     public static (IReadOnlyList<MonitorInfo> All, MonitorInfo Primary) Enumerate()
     {
         var monitors = new List<MonitorInfo>();
@@ -58,17 +54,16 @@ public static partial class MonitorEnumerator
                 {
                     return 1;
                 }
-                uint dpiX = 96, dpiY = 96;
-                _ = GetDpiForMonitor(hMon, MDT_EFFECTIVE_DPI, out dpiX, out dpiY);
-                double dpi = dpiX == 0 ? 96 : dpiX;
-                double scale = 96d / dpi;
-                var work = new Rect(
-                    Left: info.rcWork.Left * scale,
-                    Top: info.rcWork.Top * scale,
-                    Width: (info.rcWork.Right - info.rcWork.Left) * scale,
-                    Height: (info.rcWork.Bottom - info.rcWork.Top) * scale);
+                var physicalWork = new Rect(
+                    Left: info.rcWork.Left,
+                    Top: info.rcWork.Top,
+                    Width: info.rcWork.Right - info.rcWork.Left,
+                    Height: info.rcWork.Bottom - info.rcWork.Top);
                 string device = new(info.szDevice);
-                var m = new MonitorInfo(device, work, dpi);
+                var m = new MonitorInfo(device, physicalWork, 96)
+                {
+                    PhysicalWorkArea = physicalWork,
+                };
                 monitors.Add(m);
                 if ((info.dwFlags & MONITORINFOF_PRIMARY) != 0)
                 {

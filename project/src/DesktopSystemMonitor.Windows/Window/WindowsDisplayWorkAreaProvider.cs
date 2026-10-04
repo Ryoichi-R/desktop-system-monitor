@@ -3,7 +3,7 @@ using DesktopSystemMonitor.Core.Platform;
 
 namespace DesktopSystemMonitor.Windows.Window;
 
-/// <summary>EnumDisplayMonitors + GetDpiForMonitorでIDisplayWorkAreaProviderへ適合させる。</summary>
+/// <summary>EnumDisplayMonitorsの物理作業領域をIDisplayWorkAreaProviderへ適合させる。</summary>
 public sealed class WindowsDisplayWorkAreaProvider : IDisplayWorkAreaProvider
 {
     public (IReadOnlyList<MonitorInfo> All, MonitorInfo Primary) Enumerate() =>

@@ -444,6 +444,72 @@ public sealed class MainWindowLayoutTests
         });
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public void native_preview_keeps_modal_owner_and_all_bounds_inside_current_work_area(int anchorIndex, bool closeWithX)
+    {
+        RunInSta(() =>
+        {
+            var settings = new AppSettings().Normalized();
+            int saves = 0;
+            var main = new MainWindow
+            {
+                Width = 392, Height = 308, Left = -10000, Top = -10000,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Layer = LayerStrategy.Normal, ShowActivated = false, Opacity = 0,
+            };
+            (testWindows ??= []).Add(main);
+            main.Show();
+            main.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            using var controller = new DesktopSystemMonitor.App.Startup.WindowPlacementController(
+                main, () => settings, update => { settings = update(settings); saves++; }, (_, _) => { }, main.Dispatcher);
+            Assert.True(controller.PositionWindow());
+            controller.BeginPlacementPreviewSession();
+            var dialog = new SettingsWindow(settings, SettingsDialogContext.Unknown,
+                () => controller.CaptureCurrentWindowPosition(settings), controller.PreviewPlacement, null)
+            {
+                Owner = main, Opacity = 0, ShowActivated = false, ShowInTaskbar = false,
+            };
+            (testWindows ??= []).Add(dialog);
+            Exception failure = null;
+            dialog.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                try
+                {
+                    dialog.PlacementAnchorBox.SelectedIndex = anchorIndex;
+                    dialog.PreviewPlacementButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    main.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                    Assert.True(dialog.IsVisible);
+                    Assert.Equal(main.Handle, WindowInterop.GetWindow(new WindowInteropHelper(dialog).Handle, WindowInterop.GW_OWNER));
+                    Assert.True(WindowPlacementNativeApi.TryGetBounds(main.Handle, out var bounds));
+                    var work = MonitorEnumerator.Enumerate().Primary.WorkArea;
+                    Assert.InRange(bounds.Left, work.Left - 1, work.Right);
+                    Assert.InRange(bounds.Top, work.Top - 1, work.Bottom);
+                    Assert.True(bounds.Right <= work.Right + 1);
+                    Assert.True(bounds.Bottom <= work.Bottom + 1);
+                    Assert.Equal(0, saves);
+                }
+                catch (Exception ex) { failure = ex; }
+                finally
+                {
+                    if (closeWithX) dialog.Close();
+                    else dialog.DialogResult = false;
+                }
+            }));
+            Assert.False(dialog.ShowDialog());
+            Assert.True(controller.CancelPlacementPreviewSession());
+            Assert.Equal(0, saves);
+            if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+        });
+    }
+
     [Fact]
     public void settings_save_fixed_kilobits_per_second_selection()
     {
@@ -457,6 +523,120 @@ public sealed class MainWindowLayoutTests
 
             Assert.True(window.ShowDialog());
             Assert.Equal(RateUnitSystem.FixedKilobitsPerSecond, window.Result?.NetworkUnitSystem);
+        });
+    }
+
+    [Fact]
+    public void placement_preview_calls_only_the_placement_callback_without_saving_or_closing()
+    {
+        RunInSta(() =>
+        {
+            AppSettings settings = new AppSettings().Normalized();
+            AppSettings previewed = null!;
+            var window = new SettingsWindow(
+                settings,
+                SettingsDialogContext.Unknown,
+                () => settings,
+                placement =>
+                {
+                    previewed = placement;
+                    return "一時表示中: DISPLAY1 の左上に表示しています。";
+                },
+                (_, _) => "unexpected save");
+            window.PlacementAnchorBox.SelectedIndex = 2;
+
+            window.PreviewPlacementButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.NotNull(previewed);
+            Assert.Equal(WindowPlacementAnchor.TopLeft, previewed.PlacementAnchor);
+            Assert.Equal(settings.UiScalePercent, previewed.UiScalePercent);
+            Assert.Null(window.Result);
+            Assert.Contains("一時表示中", window.PlacementStatusText.Text, StringComparison.Ordinal);
+        });
+    }
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
+    [InlineData("201")]
+    [InlineData("-1")]
+    [InlineData("invalid")]
+    public void invalid_margins_block_both_preview_and_save(string text)
+    {
+        RunInSta(() =>
+        {
+            bool moved = false;
+            bool saved = false;
+            var settings = new AppSettings().Normalized();
+            var window = new SettingsWindow(settings, SettingsDialogContext.Unknown, () => settings,
+                _ => { moved = true; return null; }, (_, _) => { saved = true; return "unexpected save"; });
+            window.HorizontalMarginBox.Text = text;
+            window.PreviewPlacementButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(moved);
+            Assert.False(saved);
+            Assert.Null(window.Result);
+            Assert.Equal(1, window.CategoryTabs.SelectedIndex);
+        });
+    }
+
+    [Fact]
+    public void save_callback_exception_keeps_draft_uncommitted_and_reports_error()
+    {
+        RunInSta(() =>
+        {
+            var settings = new AppSettings().Normalized();
+            var window = new SettingsWindow(settings, SettingsDialogContext.Unknown, () => settings, null,
+                (_, _) => throw new InvalidOperationException("injected"));
+            window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Null(window.Result);
+            Assert.Contains("保存できません", window.ValidationMessage.Text, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void placement_preview_validates_margins_without_invoking_the_move_callback()
+    {
+        RunInSta(() =>
+        {
+            bool moved = false;
+            var window = new SettingsWindow(
+                new AppSettings().Normalized(),
+                SettingsDialogContext.Unknown,
+                () => new AppSettings().Normalized(),
+                _ =>
+                {
+                    moved = true;
+                    return null;
+                },
+                null);
+            window.HorizontalMarginBox.Text = "201";
+
+            window.PreviewPlacementButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.False(moved);
+            Assert.Equal(1, window.CategoryTabs.SelectedIndex);
+            Assert.Contains("余白は0～200", window.ValidationMessage.Text, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void failed_settings_save_keeps_dialog_result_unset_and_shows_error()
+    {
+        RunInSta(() =>
+        {
+            var window = new SettingsWindow(
+                new AppSettings().Normalized(),
+                SettingsDialogContext.Unknown,
+                () => new AppSettings().Normalized(),
+                null,
+                (_, _) => "設定を保存できませんでした。");
+
+            window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Null(window.Result);
+            Assert.Contains("設定を保存できませんでした", window.ValidationMessage.Text, StringComparison.Ordinal);
         });
     }
 

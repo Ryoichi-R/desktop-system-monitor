@@ -14,17 +14,19 @@ namespace DesktopSystemMonitor.App;
 public partial class SettingsWindow : Window
 {
     private readonly Func<AppSettings> _captureCurrentPosition;
+    private readonly Func<AppSettings, string?>? _previewPlacement;
+    private readonly Func<SettingsDraft, bool, string?>? _saveDraft;
     private AppSettings _placementSettings;
     private bool _initializingPlacement = true;
     private bool _restoreTopmostAfterForegroundPresentation;
     private bool _foregroundPresentationWaitingForContent;
 
-    public SettingsWindow(AppSettings settings) : this(settings, SettingsDialogContext.Unknown, () => settings)
+    public SettingsWindow(AppSettings settings) : this(settings, SettingsDialogContext.Unknown, () => settings, null, null)
     {
     }
 
     internal SettingsWindow(AppSettings settings, SettingsDialogContext context)
-        : this(settings, context, () => settings)
+        : this(settings, context, () => settings, null, null)
     {
     }
 
@@ -32,10 +34,22 @@ public partial class SettingsWindow : Window
         AppSettings settings,
         SettingsDialogContext context,
         Func<AppSettings> captureCurrentPosition)
+        : this(settings, context, captureCurrentPosition, null, null)
+    {
+    }
+
+    internal SettingsWindow(
+        AppSettings settings,
+        SettingsDialogContext context,
+        Func<AppSettings> captureCurrentPosition,
+        Func<AppSettings, string?>? previewPlacement,
+        Func<SettingsDraft, bool, string?>? saveDraft)
     {
         InitializeComponent();
         _placementSettings = settings;
         _captureCurrentPosition = captureCurrentPosition;
+        _previewPlacement = previewPlacement;
+        _saveDraft = saveDraft;
         IntervalBox.Text = settings.SamplingIntervalSeconds.ToString(CultureInfo.InvariantCulture);
         ScaleBox.Text = settings.UiScalePercent.ToString(CultureInfo.InvariantCulture);
         SelectByTag(DisplayModeBox, settings.DisplayMode.ToString());
@@ -146,16 +160,14 @@ public partial class SettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (!double.TryParse(IntervalBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double interval) || interval is < 0.5 or > 5 ||
-            !double.TryParse(ScaleBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double scale) || scale is < 75 or > 200)
+        if (!double.TryParse(IntervalBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double interval) || !double.IsFinite(interval) || interval is < 0.5 or > 5 ||
+            !double.TryParse(ScaleBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double scale) || !double.IsFinite(scale) || scale is < 75 or > 200)
         {
             ShowValidationError(0, "全体設定: 数値の範囲を確認してください。");
             return;
         }
-        if (!double.TryParse(HorizontalMarginBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double horizontalMargin) || horizontalMargin is < 0 or > 200 ||
-            !double.TryParse(VerticalMarginBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double verticalMargin) || verticalMargin is < 0 or > 200)
+        if (!TryCreatePlacementDraft(out AppSettings placementDraft))
         {
-            ShowValidationError(1, "表示位置: 余白は0～200の数値で入力してください。");
             return;
         }
         if (!int.TryParse(NetworkPeakWindowBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int networkPeakWindow) || networkPeakWindow is < 10 or > 60)
@@ -233,36 +245,37 @@ public partial class SettingsWindow : Window
             BackgroundColor = $"#FF{BackgroundColorBox.Text.Trim()[1..].ToUpperInvariant()}",
             PinnedGpuLuidHex = gpuLuid,
             SelectedNetworkAdapterLuids = networkLuids,
-            SavedMonitorDeviceName = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedMonitorDeviceName
-                : (MonitorBox.SelectedItem as MonitorChoice)?.DeviceName,
-            SavedRightEdgeDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedRightEdgeDip
-                : null,
-            SavedTopEdgeDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedTopEdgeDip
-                : null,
-            SavedMonitorDpi = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedMonitorDpi
-                : null,
-            PlacementXRatio = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.PlacementXRatio
-                : null,
-            PlacementYRatio = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.PlacementYRatio
-                : null,
-            SavedWorkAreaWidthDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedWorkAreaWidthDip
-                : null,
-            SavedWorkAreaHeightDip = _placementSettings.PlacementMode == WindowPlacementMode.Custom
-                ? _placementSettings.SavedWorkAreaHeightDip
-                : null,
-            PlacementMode = _placementSettings.PlacementMode,
-            PlacementAnchor = (PlacementAnchorBox.SelectedItem as PlacementAnchorChoice)?.Value
-                ?? WindowPlacementAnchor.TopRight,
-            HorizontalMarginDip = horizontalMargin,
-            VerticalMarginDip = verticalMargin,
+            SavedMonitorDeviceName = placementDraft.SavedMonitorDeviceName,
+            SavedRightEdgeDip = placementDraft.SavedRightEdgeDip,
+            SavedTopEdgeDip = placementDraft.SavedTopEdgeDip,
+            SavedMonitorDpi = placementDraft.SavedMonitorDpi,
+            PlacementXRatio = placementDraft.PlacementXRatio,
+            PlacementYRatio = placementDraft.PlacementYRatio,
+            SavedWorkAreaWidthDip = placementDraft.SavedWorkAreaWidthDip,
+            SavedWorkAreaHeightDip = placementDraft.SavedWorkAreaHeightDip,
+            PlacementMode = placementDraft.PlacementMode,
+            PlacementAnchor = placementDraft.PlacementAnchor,
+            HorizontalMarginDip = placementDraft.HorizontalMarginDip,
+            VerticalMarginDip = placementDraft.VerticalMarginDip,
         };
+        if (_saveDraft is not null)
+        {
+            string? saveError;
+            try
+            {
+                saveError = _saveDraft(Result, ResetBatteryChargeLearningRequested);
+            }
+            catch
+            {
+                saveError = "設定を保存できませんでした。もう一度お試しください。";
+            }
+            if (saveError is not null)
+            {
+                Result = null;
+                ShowValidationError(0, saveError);
+                return;
+            }
+        }
         DialogResult = true;
     }
 
@@ -282,6 +295,62 @@ public partial class SettingsWindow : Window
         _placementSettings = _placementSettings with { PlacementMode = WindowPlacementMode.Preset };
         UpdatePlacementStatus();
     }
+
+    private void PreviewPlacement_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryCreatePlacementDraft(out AppSettings placementDraft))
+        {
+            return;
+        }
+
+        try
+        {
+            PlacementStatusText.Text = _previewPlacement?.Invoke(placementDraft)
+                ?? "選んだ位置の一時プレビューを開始できませんでした。";
+        }
+        catch (Exception ex)
+        {
+            PlacementStatusText.Text = $"表示位置をプレビューできませんでした。{ex.Message}";
+        }
+    }
+
+    private bool TryCreatePlacementDraft(out AppSettings draft)
+    {
+        draft = _placementSettings;
+        if (!TryParseMargin(HorizontalMarginBox.Text, out double horizontalMargin)
+            || !TryParseMargin(VerticalMarginBox.Text, out double verticalMargin))
+        {
+            ShowValidationError(1, "表示位置: 余白は0～200の数値で入力してください。");
+            return false;
+        }
+        draft = draft with
+        {
+            PlacementAnchor = (PlacementAnchorBox.SelectedItem as PlacementAnchorChoice)?.Value
+                ?? WindowPlacementAnchor.TopRight,
+            HorizontalMarginDip = horizontalMargin,
+            VerticalMarginDip = verticalMargin,
+        };
+        if (draft.PlacementMode == WindowPlacementMode.Preset)
+        {
+            draft = draft with
+            {
+                SavedMonitorDeviceName = (MonitorBox.SelectedItem as MonitorChoice)?.DeviceName,
+                SavedRightEdgeDip = null,
+                SavedTopEdgeDip = null,
+                SavedMonitorDpi = null,
+                PlacementXRatio = null,
+                PlacementYRatio = null,
+                SavedWorkAreaWidthDip = null,
+                SavedWorkAreaHeightDip = null,
+            };
+        }
+        return true;
+    }
+
+    private static bool TryParseMargin(string text, out double margin) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out margin)
+        && double.IsFinite(margin)
+        && margin is >= 0 and <= 200;
 
     private void UseCurrentPosition_Click(object sender, RoutedEventArgs e)
     {

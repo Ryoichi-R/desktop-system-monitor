@@ -29,13 +29,18 @@ public static class WindowAnchor
         double? savedWorkAreaWidth = null,
         double? savedWorkAreaHeight = null,
         double? savedXRatio = null,
-        double? savedYRatio = null)
+        double? savedYRatio = null,
+        double edgeMargin = Margin)
     {
         ArgumentNullException.ThrowIfNull(monitors);
         ArgumentNullException.ThrowIfNull(primary);
         if (widgetWidth <= 0 || widgetHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(widgetWidth));
+        }
+        if (!double.IsFinite(edgeMargin) || edgeMargin < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(edgeMargin));
         }
 
         MonitorInfo target = primary;
@@ -99,7 +104,7 @@ public static class WindowAnchor
 
         // Clamp to monitor working area with margin so the widget stays fully
         // visible even when resolution or DPI changed.
-        double clampMargin = preset ? 0 : Margin;
+        double clampMargin = preset ? 0 : edgeMargin;
         double minLeft = target.WorkArea.Left + clampMargin;
         double maxLeft = target.WorkArea.Right - widgetWidth - clampMargin;
         double minTop = target.WorkArea.Top + clampMargin;

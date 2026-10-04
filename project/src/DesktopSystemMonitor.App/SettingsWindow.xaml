@@ -34,7 +34,8 @@
           <Grid Style="{StaticResource FieldGrid}"><Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="基準位置" VerticalAlignment="Center"/><ComboBox x:Name="PlacementAnchorBox" Grid.Column="1" DisplayMemberPath="Label" SelectionChanged="PlacementPreset_Changed"/></Grid>
           <Grid Style="{StaticResource FieldGrid}"><Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="水平余白（0～200 DIP）" VerticalAlignment="Center"/><TextBox x:Name="HorizontalMarginBox" Grid.Column="1" TextChanged="PlacementPreset_Changed"/></Grid>
           <Grid Style="{StaticResource FieldGrid}"><Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="垂直余白（0～200 DIP）" VerticalAlignment="Center"/><TextBox x:Name="VerticalMarginBox" Grid.Column="1" TextChanged="PlacementPreset_Changed"/></Grid>
-          <WrapPanel Margin="4,12,4,4"><Button Content="現在位置を使用" Padding="12,5" Margin="0,0,8,0" Click="UseCurrentPosition_Click"/><Button Content="既定の右上へ戻す" Padding="12,5" Click="ResetPosition_Click"/></WrapPanel>
+          <WrapPanel Margin="4,12,4,4"><Button Content="現在位置を使用" Padding="12,5" Margin="0,0,8,0" Click="UseCurrentPosition_Click"/><Button Content="既定の右上へ戻す" Padding="12,5" Margin="0,0,8,0" Click="ResetPosition_Click"/><Button x:Name="PreviewPlacementButton" Content="表示" Padding="16,5" Click="PreviewPlacement_Click"/></WrapPanel>
+          <TextBlock Text="選んだ位置を一時表示します。保存するまで設定は確定しません。" Margin="4,4,4,8" Foreground="Gray" TextWrapping="Wrap"/>
           <TextBlock x:Name="PlacementStatusText" Margin="4,8" Foreground="Gray" TextWrapping="Wrap"/>
           <TextBlock Text="クリック透過を解除すると、メイン表示をドラッグして移動できます。ドラッグ後の位置は自動保存されます。" Margin="4,12" Foreground="Gray" TextWrapping="Wrap"/>
         </StackPanel></ScrollViewer>

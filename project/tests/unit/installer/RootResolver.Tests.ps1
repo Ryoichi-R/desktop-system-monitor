@@ -43,7 +43,10 @@ Describe 'repository boundary validation' {
     It 'preserves the filesystem root during normalization' {
         $filesystemRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($TestDrive))
         $normalized = ConvertTo-DesktopSystemMonitorFullPath -Path $filesystemRoot
-        [IO.Path]::IsPathFullyQualified($normalized) | Should -BeTrue
+        # Windows PowerShell 5.1 (.NET Framework) has no [IO.Path]::IsPathFullyQualified.
+        [IO.Path]::IsPathRooted($normalized) | Should -BeTrue
+        $normalized | Should -Be $filesystemRoot
+        [IO.Path]::GetPathRoot($normalized) | Should -Be $normalized
         if ([IO.Path]::DirectorySeparatorChar -eq '/') { $normalized | Should -Be '/' }
     }
 }

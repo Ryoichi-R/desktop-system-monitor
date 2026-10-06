@@ -198,10 +198,10 @@ public sealed class PlacementPreviewRegressionTests
     public static IEnumerable<object[]> PlacementCases()
     {
         foreach (double dpi in new double[] { 96, 120, 144, 168, 192 })
-        foreach (int scale in new[] { 75, 100, 140, 200 })
-        foreach (WindowPlacementAnchor anchor in Enum.GetValues<WindowPlacementAnchor>())
-        foreach (bool expanded in new[] { false, true })
-            yield return new object[] { dpi, scale, anchor, expanded };
+            foreach (int scale in new[] { 75, 100, 140, 200 })
+                foreach (WindowPlacementAnchor anchor in Enum.GetValues<WindowPlacementAnchor>())
+                    foreach (bool expanded in new[] { false, true })
+                        yield return new object[] { dpi, scale, anchor, expanded };
     }
 
     [Theory]

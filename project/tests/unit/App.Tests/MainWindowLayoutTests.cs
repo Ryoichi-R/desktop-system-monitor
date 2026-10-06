@@ -461,9 +461,14 @@ public sealed class MainWindowLayoutTests
             int saves = 0;
             var main = new MainWindow
             {
-                Width = 392, Height = 308, Left = -10000, Top = -10000,
+                Width = 392,
+                Height = 308,
+                Left = -10000,
+                Top = -10000,
                 WindowStartupLocation = WindowStartupLocation.Manual,
-                Layer = LayerStrategy.Normal, ShowActivated = false, Opacity = 0,
+                Layer = LayerStrategy.Normal,
+                ShowActivated = false,
+                Opacity = 0,
             };
             (testWindows ??= []).Add(main);
             main.Show();
@@ -475,7 +480,10 @@ public sealed class MainWindowLayoutTests
             var dialog = new SettingsWindow(settings, SettingsDialogContext.Unknown,
                 () => controller.CaptureCurrentWindowPosition(settings), controller.PreviewPlacement, null)
             {
-                Owner = main, Opacity = 0, ShowActivated = false, ShowInTaskbar = false,
+                Owner = main,
+                Opacity = 0,
+                ShowActivated = false,
+                ShowInTaskbar = false,
             };
             (testWindows ??= []).Add(dialog);
             Exception failure = null;

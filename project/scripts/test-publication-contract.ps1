@@ -22,7 +22,8 @@ $publishScript = Join-Path $PSScriptRoot 'publish-desktop-system-monitor.ps1'
 $publishContractScript = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-publish-contract.ps1'
 $releaseScript = Join-Path $PSScriptRoot 'new-desktop-system-monitor-release.ps1'
 $runtimeAssetsScript = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-runtime-assets.ps1'
-foreach ($requiredScript in @($projectFile, $publishScript, $publishContractScript, $releaseScript, $runtimeAssetsScript)) {
+$versionResourceScript = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-version-resource.ps1'
+foreach ($requiredScript in @($projectFile, $publishScript, $publishContractScript, $releaseScript, $runtimeAssetsScript, $versionResourceScript)) {
     if (-not (Test-Path -LiteralPath $requiredScript -PathType Leaf)) {
         $failures.Add("Single-file contract input is missing: $requiredScript")
     }
@@ -59,6 +60,9 @@ if (Test-Path -LiteralPath $publishScript -PathType Leaf) {
         }
     }
     if ($publishText -match 'hostfxr\.dll') { $failures.Add('Publish script must not resolve runtime version from hostfxr.dll.') }
+    if ($publishText -notmatch 'Assert-DesktopSystemMonitorExecutableVersion\s+-Path\s+\(Join-Path \$destination ''DesktopSystemMonitor\.exe''\)\s+-ProductVersion \$productVersion') {
+        $failures.Add('Publish script must verify the executable version resource against Directory.Build.props.')
+    }
 }
 $expectedPublishContract = 'Release|self-contained=true|single-file=true|native-self-extract=true|trimmed=false|compression=false|include-all-content=false|ci-build=true|debug=None|debug-symbols=false'
 

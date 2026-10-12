@@ -8,7 +8,11 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <NeutralLanguage>en-US</NeutralLanguage>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>$(Version).0</AssemblyVersion>
+    <FileVersion>$(Version).0</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <Deterministic>true</Deterministic>

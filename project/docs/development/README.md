@@ -17,3 +17,5 @@ subject exactly matches `ExpectedPublisher`. If a preview must remain unsigned,
 the caller must pass `-AllowUnsignedPreview` together with a non-empty waiver
 owner, reason, and future ISO-8601 expiry. The waiver is recorded in the release
 manifest; omitting either signing or the complete waiver blocks packaging.
+
+Product version and embedded identity: [versioning](versioning.md).

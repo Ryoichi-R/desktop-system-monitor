@@ -1,6 +1,8 @@
 # Usage
 
-Version `0.1.0` is published as source only. There is no official validated
+The published release `0.1.0` is source only, and so is any newer unreleased
+version in the source tree. Settings → バージョン情報 shows the version, Git
+source ID and UTC build time of the build you run. There is no official validated
 archive or prebuilt executable. Build locally using the commands in the root
 README, keep the complete publish directory together, and start its
 `DesktopSystemMonitor.exe`. The local executable is unsigned.

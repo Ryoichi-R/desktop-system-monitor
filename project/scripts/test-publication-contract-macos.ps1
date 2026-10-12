@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$BundlePath
+    [Parameter(Mandatory)][string]$BundlePath,
+    [ValidateSet('osx-arm64', 'osx-x64')][string]$Runtime = 'osx-arm64'
 )
 
 # Read-only validation for a locally produced macOS bundle. This script does
-# not install, launch, sign, or modify the bundle.
+# not install, open the GUI, sign, or modify the bundle.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -66,13 +67,40 @@ foreach ($executable in @($appExecutable, $hostExecutable)) {
         -FailureMessage "Bundle executable is not executable: $executable" | Out-Null
     $fileDescription = (Invoke-Checked -FilePath '/usr/bin/file' -ArgumentList @('-b', $executable) `
         -FailureMessage "Unable to inspect executable: $executable" | ForEach-Object { [string]$_ }) -join ' '
-    if ($fileDescription -notmatch '\barm64(?:e)?\b') {
-        throw "Bundle executable is not arm64: $executable ($fileDescription)"
+    $architecturePattern = if ($Runtime -eq 'osx-arm64') { '\barm64(?:e)?\b' } else { '\bx86_64\b' }
+    if ($fileDescription -notmatch $architecturePattern) {
+        throw "Bundle executable does not match ${Runtime}: $executable ($fileDescription)"
     }
 }
 
 Invoke-Checked -FilePath '/usr/bin/plutil' -ArgumentList @('-lint', '--', $plist) `
     -FailureMessage 'Info.plist is invalid.' | Out-Null
+[xml]$props = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Directory.Build.props') -Raw
+$productVersion = [string]$props.Project.PropertyGroup.Version
+foreach ($key in @('CFBundleShortVersionString', 'CFBundleVersion')) {
+    if ((Get-PlistRawValue -PlistPath $plist -Key $key) -ne $productVersion) { throw "Bundle $key does not match Directory.Build.props." }
+}
+# Run only the metadata command on a compatible host; it never opens the UI,
+# starts sampling, reads settings, or depends on a development checkout.
+$hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+$osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+# OSArchitecture is used only to decide whether this validator can launch the target;
+# the application's displayed architecture always uses ProcessArchitecture.
+$canExecute = ($Runtime -eq 'osx-arm64' -and $osArchitecture -eq 'Arm64') -or ($Runtime -eq 'osx-x64' -and $hostArchitecture -eq 'X64')
+if (-not $canExecute -and $Runtime -eq 'osx-x64' -and $osArchitecture -eq 'Arm64') {
+    # A read-only probe of the already available Rosetta runtime. Never install it.
+    & /usr/bin/arch -x86_64 /usr/bin/true 2>$null
+    $canExecute = $LASTEXITCODE -eq 0
+}
+if ($canExecute) {
+    $information = @(Invoke-Checked -FilePath $appExecutable -ArgumentList @('--version-info') -FailureMessage 'Embedded build information cannot be read.')
+    if ($information.Count -ne 6 -or $information[0] -ne 'アプリ名: Desktop System Monitor' -or $information[1] -ne "バージョン: $productVersion") { throw 'Embedded product identity does not match the bundle.' }
+    $architecture = if ($Runtime -eq 'osx-arm64') { 'ARM64' } else { 'x64' }
+    if ($information[5] -ne "実行版: macOS / $architecture") { throw 'Embedded execution identity does not match the bundle.' }
+    if ($information[4] -notmatch '^ビルド日時: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC \(\+00:00\)$') { throw 'Embedded build time must be UTC.' }
+} else {
+    Write-Host 'Metadata execution check not run: the target architecture cannot be verified on this host.'
+}
 $bundleExecutable = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleExecutable'
 if ($bundleExecutable -ne 'DesktopSystemMonitor') {
     throw "Unexpected CFBundleExecutable: $bundleExecutable"
@@ -102,9 +130,9 @@ foreach ($relativePath in @('THIRD-PARTY-NOTICES.md', 'dependency-inventory.json
 }
 $inventory = @(Get-Content -LiteralPath (Join-Path $resources 'dependency-inventory.json') -Raw | ConvertFrom-Json)
 if ($inventory -match '^(DesktopSystemMonitor.Windows/|Microsoft.WindowsDesktop.App)') { throw 'Windows project/runtime leaked into macOS dependency graph.' }
-$runtime = @($inventory | Where-Object { $_ -like 'Microsoft.NETCore.App.Runtime.osx-arm64/*' })
-if ($runtime.Count -ne 1) { throw 'Runtime inventory must contain exactly one macOS runtime pack.' }
-$version = $runtime[0].Split('/')[1]
+$runtimeEntries = @($inventory | Where-Object { $_ -like "Microsoft.NETCore.App.Runtime.$Runtime/*" })
+if ($runtimeEntries.Count -ne 1) { throw 'Runtime inventory must contain exactly one macOS runtime pack.' }
+$version = $runtimeEntries[0].Split('/')[1]
 foreach ($notice in @('LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT')) {
     if (-not (Test-Path -LiteralPath (Join-Path $resources "licenses/dotnet-runtime-$version/$notice") -PathType Leaf)) { throw 'Runtime notice is missing.' }
 }

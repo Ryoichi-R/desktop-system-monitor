@@ -23,4 +23,10 @@
           Link="Fixtures\MainWindow.xaml"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\BuildInformationTests.cs" Link="BuildInformationTests.cs" />
+    <Compile Include="..\BuildIdentityTargetsTests.cs" Link="BuildIdentityTargetsTests.cs" />
+    <EmbeddedResource Include="..\..\..\Directory.Build.targets"
+                      LogicalName="DesktopSystemMonitor.Build.Tests.Directory.Build.targets" />
+  </ItemGroup>
 </Project>

@@ -60,11 +60,17 @@ function Resolve-DesktopSystemMonitorCandidateIdentity {
         throw 'Directory.Build.props does not define Version.'
     }
 
+    # Root MSBuild targets also affect the compiled identity and must be bound
+    # into the same source digest used by the Windows distribution contract.
+    $targetsPath = Join-Path $root 'Directory.Build.targets'
     $sourceFiles = @(
         Get-ChildItem -LiteralPath (Join-Path $root 'src') -File -Recurse | Where-Object {
             $_.FullName -notmatch '[\\/](bin|obj|dist|coverage)[\\/]'
         }
         Get-Item -LiteralPath $propsPath, $globalJsonPath
+        if (Test-Path -LiteralPath $targetsPath -PathType Leaf) {
+            Get-Item -LiteralPath $targetsPath
+        }
     ) | ForEach-Object FullName
     $dependencyFiles = @(
         Get-ChildItem -LiteralPath $root -Filter '*.csproj' -File -Recurse | Where-Object {

@@ -13,6 +13,19 @@ namespace DesktopSystemMonitor.App;
 
 public partial class SettingsWindow : Window
 {
+    private void CopyVersionInformation_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(BuildInformation.Current.CopyText);
+            CopyVersionInformationStatus.Text = "コピーしました。";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            CopyVersionInformationStatus.Text = "コピーできませんでした。もう一度お試しください。";
+        }
+    }
+
     private readonly Func<AppSettings> _captureCurrentPosition;
     private readonly Func<AppSettings, string?>? _previewPlacement;
     private readonly Func<SettingsDraft, bool, string?>? _saveDraft;
@@ -46,6 +59,7 @@ public partial class SettingsWindow : Window
         Func<SettingsDraft, bool, string?>? saveDraft)
     {
         InitializeComponent();
+        VersionFields.ItemsSource = BuildInformation.Current.Fields;
         _placementSettings = settings;
         _captureCurrentPosition = captureCurrentPosition;
         _previewPlacement = previewPlacement;

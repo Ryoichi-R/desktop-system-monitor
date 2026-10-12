@@ -96,6 +96,10 @@ if (-not (Test-Path -LiteralPath $runtimeAssetsScript -PathType Leaf)) { throw "
 $publishContractScript = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-publish-contract.ps1'
 if (-not (Test-Path -LiteralPath $publishContractScript -PathType Leaf)) { throw "Publish contract helper is missing: $publishContractScript" }
 . $publishContractScript
+$versionResourceScript = Join-Path $PSScriptRoot 'resolve-desktop-system-monitor-version-resource.ps1'
+if (-not (Test-Path -LiteralPath $versionResourceScript -PathType Leaf)) { throw "Version resource helper is missing: $versionResourceScript" }
+. $versionResourceScript
+$productVersion = Get-DesktopSystemMonitorProductVersion -ProjectRoot $projectRoot
 # The shared helper emits these exact contract arguments:
 # -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 # -p:PublishTrimmed=false -p:EnableCompressionInSingleFile=false
@@ -188,6 +192,9 @@ $publishArgs = Get-DesktopSystemMonitorPublishArguments `
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
+# The Windows file properties must carry the same product version as the
+# settings screen and the macOS bundle; all of them come from Directory.Build.props.
+Assert-DesktopSystemMonitorExecutableVersion -Path (Join-Path $destination 'DesktopSystemMonitor.exe') -ProductVersion $productVersion | Out-Null
 
 $assetsPath = if ($null -ne $artifactsFull) {
     Join-Path $artifactsFull 'obj/DesktopSystemMonitor.App/project.assets.json'

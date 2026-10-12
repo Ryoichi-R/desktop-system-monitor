@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using DesktopSystemMonitor.Core.Settings;
@@ -8,6 +9,29 @@ namespace DesktopSystemMonitor.App;
 
 internal sealed class MacSettingsWindow : Window
 {
+    internal TextBlock VersionInformationText { get; } = new() { Text = BuildInformation.Current.CopyText, TextWrapping = TextWrapping.Wrap };
+    internal Button CopyVersionInformationButton { get; } = new() { Content = "情報をコピー", HorizontalAlignment = HorizontalAlignment.Left };
+    internal TextBlock CopyVersionInformationStatus { get; } = new() { TextWrapping = TextWrapping.Wrap };
+
+    private async void CopyVersionInformation_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is null)
+            {
+                CopyVersionInformationStatus.Text = "コピーできませんでした。もう一度お試しください。";
+                return;
+            }
+            await clipboard.SetTextAsync(BuildInformation.Current.CopyText);
+            CopyVersionInformationStatus.Text = "コピーしました。";
+        }
+        catch (Exception)
+        {
+            CopyVersionInformationStatus.Text = "コピーできませんでした。もう一度お試しください。";
+        }
+    }
+
     private readonly AvaloniaMainWindow _monitor;
     private bool _refreshing;
     internal NumericUpDown ScaleInput { get; } = Number(50, 150);
@@ -51,10 +75,12 @@ internal sealed class MacSettingsWindow : Window
                 Category("計測", Field("CPU最大値の集計期間（秒）", CpuPeakInput),
                     Field("ネットワーク最大値の集計期間（秒）", NetworkPeakInput),
                     Hint("直近10〜60秒の最大値を表示します。計測は1秒ごとに更新されます。")),
-                Category("診断", DiagnosticsInput, Hint("問題の調査が必要なときに有効にしてください。"))
+                Category("診断", DiagnosticsInput, Hint("問題の調査が必要なときに有効にしてください。")),
+                Category("バージョン情報", VersionInformationText, CopyVersionInformationButton, CopyVersionInformationStatus)
             }
         };
         Content = new DockPanel { Margin = new Thickness(20), Children = { footer, tabs } };
+        CopyVersionInformationButton.Click += CopyVersionInformation_Click;
         Refresh();
         ScaleInput.ValueChanged += (_, _) => Change(() => { if (ScaleInput.Value is decimal value) _monitor.SetWidgetScale((double)value / 100); });
         CpuPeakInput.ValueChanged += (_, _) => Change(() => { if (CpuPeakInput.Value is decimal value) _monitor.SetCpuPeakWindow((int)value); });

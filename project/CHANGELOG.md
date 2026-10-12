@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added common version information and copying to Windows WPF and macOS
+  Avalonia settings. Product version is now 0.2.0 for all OS/architectures;
+  Git identity, dirty state and UTC build time are embedded at compilation.
+  macOS bundle versions are generated from Directory.Build.props, and the
+  Windows publish step rejects an executable whose VERSIONINFO differs.
+
 - Protected Use current position from capturing a mismatched native frame;
   it preserves the placement draft until size verification succeeds.
   Per-monitor diagnostic entries now include physical bounds, work areas and

@@ -6,9 +6,9 @@ body:
   - type: markdown
     attributes:
       value: Do not report vulnerabilities here. Redact logs and screenshots before attaching them.
-  - type: input
+  - type: textarea
     id: version
-    attributes: { label: Version, placeholder: "0.1.0" }
+    attributes: { label: Version, description: "Paste the text from Settings > バージョン情報 > 情報をコピー. For a build without that tab, enter the product version.", render: text }
     validations: { required: true }
   - type: dropdown
     id: architecture

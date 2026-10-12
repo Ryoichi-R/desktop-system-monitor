@@ -19,8 +19,12 @@ of the information area, so the outer window is wider than the selected width.
 
 ## Release status
 
-Version `0.1.0` is a **source-only experimental preview**. No official prebuilt
-EXE, portable archive, or signed binary is distributed. Users may build the
+The published release is version `0.1.0`, a **source-only experimental
+preview**. The source tree may carry a newer, unreleased product version; the
+authoritative number is `Version` in
+[Directory.Build.props](Directory.Build.props), and a locally built app shows
+it under Settings → バージョン情報. No official prebuilt EXE, portable archive,
+or signed binary is distributed. Users may build the
 source locally, but metric accuracy, 24-hour stability, hardware compatibility,
 and response-time support are not guaranteed.
 

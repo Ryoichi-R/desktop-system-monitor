@@ -1,9 +1,15 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputRoot)
+param(
+    [Parameter(Mandatory)][string]$OutputRoot,
+    [ValidateSet('osx-arm64', 'osx-x64')][string]$Runtime = 'osx-arm64'
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $IsMacOS) { throw 'The macOS bundle must be built on macOS.' }
 $projectRoot = Split-Path -Parent $PSScriptRoot
+[xml]$props = Get-Content -LiteralPath (Join-Path $projectRoot 'Directory.Build.props') -Raw
+$productVersion = [string]$props.Project.PropertyGroup.Version
+if ($productVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Directory.Build.props must define a numeric major.minor.patch Version.' }
 $destination = [IO.Path]::GetFullPath($OutputRoot)
 $bundle = Join-Path $destination 'DesktopSystemMonitor.app'
 if (Test-Path -LiteralPath $bundle) { throw 'Choose a new output directory; an existing bundle will not be overwritten.' }
@@ -11,7 +17,7 @@ $macos = Join-Path $bundle 'Contents/MacOS'
 New-Item -ItemType Directory -Path $macos -Force | Out-Null
 foreach ($name in @('DesktopSystemMonitor.Mac.SensorHost', 'DesktopSystemMonitor.App')) {
     $project = Join-Path $projectRoot "src/$name/$name.csproj"
-    & dotnet publish $project -c Release -f net10.0 -r osx-arm64 --self-contained true '-p:PublishSingleFile=true' '-p:IncludeNativeLibrariesForSelfExtract=true' '-p:PublishTrimmed=false' '-p:MacAvaloniaOnly=true' '-p:EnableCompressionInSingleFile=false' '-p:IncludeAllContentForSelfExtract=false' '-p:UsedAvaloniaProducts=' '-p:DebugType=None' '-p:DebugSymbols=false' -o $macos
+    & dotnet publish $project -c Release -f net10.0 -r $Runtime --self-contained true '-p:PublishSingleFile=true' '-p:IncludeNativeLibrariesForSelfExtract=true' '-p:PublishTrimmed=false' '-p:MacAvaloniaOnly=true' '-p:EnableCompressionInSingleFile=false' '-p:IncludeAllContentForSelfExtract=false' '-p:UsedAvaloniaProducts=' '-p:DebugType=None' '-p:DebugSymbols=false' -o $macos
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $name" }
 }
 $resources = Join-Path $bundle 'Contents/Resources'
@@ -30,15 +36,15 @@ foreach ($licenseName in $licenseNames) {
     if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing dependency license: $licenseName" }
     Copy-Item -LiteralPath $source -Destination $licenseRoot -Recurse
 }
-# Bind the runtime notices to the actually resolved osx-arm64 runtime pack.
+# Bind the runtime notices to the actually resolved target runtime pack.
 $assets = Get-Content -LiteralPath (Join-Path $projectRoot 'src/DesktopSystemMonitor.App/obj/project.assets.json') -Raw | ConvertFrom-Json -AsHashtable
-$runtime = @($assets.project.frameworks['net10.0'].downloadDependencies | Where-Object { $_.name -eq 'Microsoft.NETCore.App.Runtime.osx-arm64' })
-if ($runtime.Count -ne 1) { throw 'Expected exactly one resolved macOS runtime pack.' }
-if ($runtime[0].version -notmatch '^\[(?<version>[^,]+),\s*\k<version>\]$') { throw 'Runtime pack version must be exact.' }
+$runtimeEntries = @($assets.project.frameworks['net10.0'].downloadDependencies | Where-Object { $_.name -eq "Microsoft.NETCore.App.Runtime.$Runtime" })
+if ($runtimeEntries.Count -ne 1) { throw 'Expected exactly one resolved macOS runtime pack.' }
+if ($runtimeEntries[0].version -notmatch '^\[(?<version>[^,]+),\s*\k<version>\]$') { throw 'Runtime pack version must be exact.' }
 $runtimeVersion = $Matches['version']
 $runtimeSource = $null
 foreach ($folder in $assets.packageFolders.Keys) {
-    $candidate = Join-Path $folder "microsoft.netcore.app.runtime.osx-arm64/$runtimeVersion"
+    $candidate = Join-Path $folder "microsoft.netcore.app.runtime.$Runtime/$runtimeVersion"
     if (Test-Path -LiteralPath (Join-Path $candidate 'LICENSE.TXT')) { $runtimeSource = $candidate; break }
 }
 if (-not $runtimeSource) { throw 'Resolved runtime license is missing.' }
@@ -47,9 +53,9 @@ New-Item -ItemType Directory -Path $runtimeDestination -Force | Out-Null
 foreach ($file in @('LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT')) {
     Copy-Item -LiteralPath (Join-Path $runtimeSource $file) -Destination $runtimeDestination
 }
-$inventory = @(@($assets.libraries.Keys) + @("Microsoft.NETCore.App.Runtime.osx-arm64/$runtimeVersion") | Sort-Object)
+$inventory = @(@($assets.libraries.Keys) + @("Microsoft.NETCore.App.Runtime.$Runtime/$runtimeVersion") | Sort-Object)
 [IO.File]::WriteAllText((Join-Path $resources 'dependency-inventory.json'), (ConvertTo-Json -InputObject $inventory))
-$plist = @'
+$plist = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -58,12 +64,12 @@ $plist = @'
 <key>CFBundleName</key><string>Desktop System Monitor</string>
 <key>CFBundleIconFile</key><string>DesktopSystemMonitor.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>$productVersion</string>
+<key>CFBundleVersion</key><string>$productVersion</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
-'@
+"@
 [IO.File]::WriteAllText((Join-Path $bundle 'Contents/Info.plist'), $plist)
 & /usr/bin/plutil -lint (Join-Path $bundle 'Contents/Info.plist')
 if ($LASTEXITCODE -ne 0) { throw 'Invalid Info.plist.' }
@@ -77,6 +83,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Bundle signing failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Signature verification failed.' }
 $contractScript = Join-Path $PSScriptRoot 'test-publication-contract-macos.ps1'
 if (-not (Test-Path -LiteralPath $contractScript -PathType Leaf)) { throw "macOS publication contract script is missing: $contractScript" }
-& $contractScript -BundlePath $bundle
+& $contractScript -BundlePath $bundle -Runtime $Runtime
 if ($LASTEXITCODE -ne 0) { throw 'macOS publication contract failed.' }
 Write-Host "Local ad-hoc signed bundle: $bundle"

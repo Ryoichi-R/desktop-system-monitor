@@ -9,6 +9,11 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args is ["--version-info"])
+        {
+            Console.WriteLine(BuildInformation.Current.CopyText);
+            return 0;
+        }
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         try { return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args); }
         catch (Exception ex)

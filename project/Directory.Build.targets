@@ -1,0 +1,77 @@
+<Project>
+  <UsingTask TaskName="ReadDesktopBuildIdentity" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ProductRoot ParameterType="System.String" Required="true" />
+      <SourceId ParameterType="System.String" Output="true" />
+      <Dirty ParameterType="System.String" Output="true" />
+      <BuiltUtc ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Diagnostics" />
+      <Using Namespace="System.Globalization" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        SourceId = "unknown";
+        Dirty = "unknown";
+        BuiltUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+        try
+        {
+            // The repository-local layout is <repo>/project. A source archive
+            // inside some other checkout must not inherit that checkout's ID.
+            var repository = Directory.GetParent(Path.GetFullPath(ProductRoot).TrimEnd(Path.DirectorySeparatorChar)).FullName;
+            if (!Directory.Exists(Path.Combine(repository, ".git")) && !File.Exists(Path.Combine(repository, ".git"))) return true;
+            Func<string[], string> git = arguments =>
+            {
+                var start = new ProcessStartInfo("git") { WorkingDirectory = repository, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                // Repository selection belongs to this build's source tree. Remove
+                // overrides only in the Git child; leave the parent environment intact.
+                foreach (var name in new[] { "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+                    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX",
+                    "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS" })
+                    start.EnvironmentVariables.Remove(name);
+                start.Arguments = String.Join(" ", arguments); // Only fixed allowlisted arguments, no shell.
+                using (var process = Process.Start(start))
+                {
+                    var output = process.StandardOutput.ReadToEndAsync();
+                    var error = process.StandardError.ReadToEndAsync();
+                    if (!process.WaitForExit(10000)) { process.Kill(); return null; }
+                    System.Threading.Tasks.Task.WaitAll(output, error);
+                    return process.ExitCode == 0 ? output.Result.Trim() : null;
+                }
+            };
+            // An empty prefix means Git itself resolved this directory as the work tree
+            // root, independent of path case, separators, 8.3 names or symlinks.
+            if (git(new[] { "rev-parse", "--is-inside-work-tree" }) != "true") return true;
+            var prefix = git(new[] { "rev-parse", "--show-prefix" });
+            if (prefix == null || prefix.Length != 0) return true;
+            var commit = git(new[] { "rev-parse", "--short=12", "HEAD" });
+            if (commit != null && Regex.IsMatch(commit, "^[0-9a-f]{7,12}$")) SourceId = commit;
+            var status = git(new[] { "status", "--porcelain=v1", "--untracked-files=normal" });
+            if (status != null) Dirty = status.Length == 0 ? "false" : "true";
+        }
+        catch { /* Git unavailable is an explicit unknown, never a guessed ID. */ }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="EmbedDesktopBuildIdentity" BeforeTargets="GetAssemblyAttributes"
+          Condition="'$(MSBuildProjectName)' == 'DesktopSystemMonitor.App' and '$(TargetFramework)' != ''">
+    <ReadDesktopBuildIdentity ProductRoot="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="SourceId" PropertyName="DesktopSourceId" />
+      <Output TaskParameter="Dirty" PropertyName="DesktopDirty" />
+      <Output TaskParameter="BuiltUtc" PropertyName="DesktopBuiltUtc" />
+    </ReadDesktopBuildIdentity>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>DesktopSourceId</_Parameter1><_Parameter2>$(DesktopSourceId)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>DesktopDirty</_Parameter1><_Parameter2>$(DesktopDirty)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>DesktopBuiltUtc</_Parameter1><_Parameter2>$(DesktopBuiltUtc)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

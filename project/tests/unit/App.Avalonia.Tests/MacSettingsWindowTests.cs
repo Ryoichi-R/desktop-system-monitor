@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using DesktopSystemMonitor.App;
@@ -89,6 +90,24 @@ public sealed class MacSettingsWindowTests
         settings.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.True(monitor.SettingsWindow!.IsVisible);
         monitor.SettingsWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Version_Information_And_Copy_Do_Not_Change_Settings()
+    {
+        var store = new MemorySettingsStore();
+        await using var monitor = new AvaloniaMainWindow();
+        monitor.EnableSettings(store);
+        var before = store.Load();
+        var dialog = new MacSettingsWindow(monitor);
+        dialog.Show();
+        Assert.Equal(BuildInformation.Current.CopyText, dialog.VersionInformationText.Text);
+        dialog.CopyVersionInformationButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { });
+        Assert.Equal(BuildInformation.Current.CopyText, await dialog.Clipboard!.TryGetTextAsync());
+        Assert.Equal("コピーしました。", dialog.CopyVersionInformationStatus.Text);
+        Assert.Equal(before, store.Load());
+        dialog.Close();
     }
 
     private sealed class FailingStore : IMacWidgetSettingsStore

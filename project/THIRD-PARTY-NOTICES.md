@@ -3,7 +3,7 @@
 Desktop System Monitor's first-party code is licensed under the MIT License;
 see `LICENSE`. The self-contained distribution includes the following
 third-party components. Package versions are the resolved `win-x64` graph for
-Desktop System Monitor 0.1.0. The macOS local-only target uses Avalonia 12.1.3. Its resolved dependency
+the Desktop System Monitor version distributed with this file. The macOS local-only target uses Avalonia 12.1.3. Its resolved dependency
 inventory is bundled in `Contents/Resources/dependency-inventory.json` with
 notices in `Contents/Resources/licenses/`. Windows-only product dependencies
 below are not used by the Mac application. Avalonia.Desktop brings managed

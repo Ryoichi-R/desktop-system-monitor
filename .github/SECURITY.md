@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-Version `0.1.0` is a source-only experimental preview. The repository owner
+The published release `0.1.0` and the current source tree are a source-only
+experimental preview. The repository owner
 handles security reports on a best-effort basis. No response or remediation
 deadline is guaranteed, and there is no supported prebuilt binary.
 

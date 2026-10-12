@@ -17,5 +17,15 @@ public sealed class WindowsDisplayWorkAreaProviderTests
         Assert.Contains(all, monitor => monitor == primary);
         Assert.NotNull(primary.PhysicalWorkArea);
         Assert.Equal(primary.PhysicalWorkArea, primary.WorkArea);
+        Assert.All(all, monitor =>
+        {
+            Assert.NotNull(monitor.PhysicalBounds);
+            Assert.NotNull(monitor.EffectiveDpi);
+            Assert.True(monitor.EffectiveDpi > 0);
+            Assert.Equal(96, monitor.Dpi);
+            Rect bounds = Assert.IsType<Rect>(monitor.PhysicalBounds);
+            Assert.True(bounds.Width >= monitor.WorkArea.Width);
+            Assert.True(bounds.Height >= monitor.WorkArea.Height);
+        });
     }
 }

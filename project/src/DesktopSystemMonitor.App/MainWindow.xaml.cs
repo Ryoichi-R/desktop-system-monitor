@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Input;
@@ -11,6 +12,7 @@ using DesktopSystemMonitor.App.Startup;
 using MediaColor = System.Windows.Media.Color;
 using MediaColorConverter = System.Windows.Media.ColorConverter;
 using MediaFontFamily = System.Windows.Media.FontFamily;
+using Size = System.Windows.Size;
 using DesktopSystemMonitor.Windows.Window;
 
 namespace DesktopSystemMonitor.App;
@@ -43,12 +45,14 @@ public partial class MainWindow : Window
     private readonly Action<IntPtr, bool> _applyClickThrough;
     private bool _clickThrough = true;
     private bool _clickThroughApplyPending = true;
+    private Size? _requiredWindowSizeDip;
 
     public event Action? LayerFallbackOccurred;
     internal event Action<LayerDiagnosticEvent>? LayerDiagnosticOccurred;
     internal event Action? DisplayConfigurationChanged;
     internal event Action? UserMoveStarted;
     internal event Action? UserMoveCompleted;
+    internal event Action<string>? NativeSizeMessageObserved;
 
     public MainWindow()
         : this(NativeWindowLayerApi.Instance)
@@ -226,6 +230,7 @@ public partial class MainWindow : Window
             : BackgroundBrushFactory.EdgeFadeExpansionRatio(normalized);
         Width = informationWidth * scale * (1d + (2d * fadeExpansionRatio));
         Height = informationHeight * scale * (1d + (2d * fadeExpansionRatio));
+        _requiredWindowSizeDip = new Size(Width, Height);
         Visibility metricPeakVisibility = !reduced && normalized.ShowRecentPeaks ? Visibility.Visible : Visibility.Collapsed;
         CpuPeakMarker.Visibility = metricPeakVisibility;
         MemoryPeakMarker.Visibility = metricPeakVisibility;
@@ -247,6 +252,35 @@ public partial class MainWindow : Window
             BackgroundBrushFactory.Clear(BackgroundFadeHost, BackgroundSurface);
         }
         Opacity = 1d;
+    }
+
+    /// <summary>
+    /// Outer window size derived from the appearance settings. WPF can rewrite
+    /// <see cref="Window.Width"/> after a native resize, so the value captured
+    /// by <see cref="ApplyVisualSettings"/> is the authority once it exists.
+    /// </summary>
+    internal Size RequiredWindowSizeDip => _requiredWindowSizeDip ?? new Size(Width, Height);
+
+    /// <summary>
+    /// Brings the native HWND size in line with <see cref="RequiredWindowSizeDip"/>
+    /// at the confirmed window DPI; see <see cref="WindowSizeSynchronizer"/>.
+    /// </summary>
+    internal WindowSizeSyncResult SynchronizeWindowSize(bool apply)
+    {
+        Dispatcher.VerifyAccess();
+        if (_closing)
+        {
+            return new WindowSizeSyncResult(WindowSizeSyncStatus.NotReady, "closing");
+        }
+        return WindowSizeSynchronizer.Synchronize(this, RequiredWindowSizeDip, apply, DescribeWidgetRoot);
+    }
+
+    private string DescribeWidgetRoot()
+    {
+        string transform = WidgetRoot.LayoutTransform is ScaleTransform scale
+            ? $"({WindowPixelSize.Format(scale.ScaleX)},{WindowPixelSize.Format(scale.ScaleY)})"
+            : "none";
+        return $"widgetRootDip=({WindowPixelSize.Format(WidgetRoot.ActualWidth)},{WindowPixelSize.Format(WidgetRoot.ActualHeight)}); widgetRootTransform={transform}";
     }
 
     private void ApplyRowVisibility(AppSettings settings, bool batteryPresent)
@@ -316,6 +350,8 @@ public partial class MainWindow : Window
     }
 
     private const int WM_WINDOWPOSCHANGING = 0x0046;
+    private const int WM_WINDOWPOSCHANGED = 0x0047;
+    private const int WM_DPICHANGED = 0x02E0;
     private const int WM_ACTIVATE = 0x0006;
     private const int WM_SETTINGCHANGE = 0x001A;
     private const int WM_DISPLAYCHANGE = 0x007E;
@@ -337,7 +373,14 @@ public partial class MainWindow : Window
                 _ = RepairLayerOnce(LayerRepairTrigger.WindowActivated, countBottomMostFailure: false);
                 RequestTopmostRecovery();
                 break;
+            case WM_WINDOWPOSCHANGED:
+                ObserveWindowPosChanged(lParam);
+                break;
+            case WM_DPICHANGED:
+                ObserveDpiChanged(wParam, lParam);
+                break;
             case WM_DISPLAYCHANGE:
+                PublishNativeSizeMessage("WM_DISPLAYCHANGE");
                 ReapplyWindowStyles(LayerRepairTrigger.DisplayChanged);
                 DisplayConfigurationChanged?.Invoke();
                 break;
@@ -349,6 +392,62 @@ public partial class MainWindow : Window
                 break;
         }
         return IntPtr.Zero;
+    }
+
+    private void ObserveWindowPosChanged(IntPtr windowPosPointer)
+    {
+        if (NativeSizeMessageObserved is null || windowPosPointer == IntPtr.Zero)
+        {
+            return;
+        }
+        WindowInterop.WINDOWPOS pos = Marshal.PtrToStructure<WindowInterop.WINDOWPOS>(windowPosPointer);
+        if ((pos.flags & WindowInterop.SWP_NOSIZE) != 0)
+        {
+            return;
+        }
+        PublishNativeSizeMessage($"WM_WINDOWPOSCHANGED; boundsPx=({pos.x},{pos.y},{pos.cx},{pos.cy})");
+    }
+
+    private void ObserveDpiChanged(IntPtr wParam, IntPtr suggestedRectPointer)
+    {
+        if (NativeSizeMessageObserved is null)
+        {
+            return;
+        }
+        long packed = wParam.ToInt64();
+        string suggested = "none";
+        if (suggestedRectPointer != IntPtr.Zero)
+        {
+            NativeRect rect = Marshal.PtrToStructure<NativeRect>(suggestedRectPointer);
+            suggested = $"({rect.Left},{rect.Top},{rect.Right - rect.Left},{rect.Bottom - rect.Top})";
+        }
+        PublishNativeSizeMessage($"WM_DPICHANGED; newDpi=({packed & 0xFFFF},{(packed >> 16) & 0xFFFF}); suggestedPx={suggested}");
+    }
+
+    private void PublishNativeSizeMessage(string message)
+    {
+        Action<string>? observer = NativeSizeMessageObserved;
+        if (observer is null)
+        {
+            return;
+        }
+        try
+        {
+            observer(message);
+        }
+        catch
+        {
+            // A diagnostic sink cannot destabilize the WPF message loop.
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     internal static bool IsDisplayConfigurationChangeMessage(int message, IntPtr wParam) =>

@@ -8,7 +8,8 @@ Diagnostic logging is off by default and can be enabled from Settings. When
 enabled, logs are stored under `%LOCALAPPDATA%\DesktopSystemMonitor\logs`, rotate
 at 1 MB, and retain at most five files. Diagnostics exclude metric values,
 window titles, process names, PIDs, counter instance names, usernames, and
-network identifiers by design.
+network identifiers by design. Placement records contain only window
+and monitor geometry, measured effective DPI values, and monitor device names such as `\\.\DISPLAY1`.
 
 The optional high-load process window displays process names and PIDs on screen
 but does not write them to the diagnostic log. Screenshots and logs should still

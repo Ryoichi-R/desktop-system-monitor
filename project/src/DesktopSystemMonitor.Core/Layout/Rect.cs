@@ -25,4 +25,14 @@ public sealed record MonitorInfo(
     /// a window-backed DPI value is available for that monitor.
     /// </summary>
     public Rect? PhysicalWorkArea { get; init; }
+
+    /// <summary>The entire monitor rectangle in physical desktop pixels.</summary>
+    public Rect? PhysicalBounds { get; init; }
+
+    /// <summary>
+    /// Effective DPI measured independently on this monitor, for diagnostics.
+    /// Null means unavailable; <see cref="Dpi"/> remains the placement basis
+    /// until the information window confirms its own DPI.
+    /// </summary>
+    public double? EffectiveDpi { get; init; }
 }

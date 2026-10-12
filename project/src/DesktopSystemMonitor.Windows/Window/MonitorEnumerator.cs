@@ -60,9 +60,16 @@ public static partial class MonitorEnumerator
                     Width: info.rcWork.Right - info.rcWork.Left,
                     Height: info.rcWork.Bottom - info.rcWork.Top);
                 string device = new(info.szDevice);
+                var physicalBounds = new Rect(
+                    info.rcMonitor.Left,
+                    info.rcMonitor.Top,
+                    info.rcMonitor.Right - info.rcMonitor.Left,
+                    info.rcMonitor.Bottom - info.rcMonitor.Top);
                 var m = new MonitorInfo(device, physicalWork, 96)
                 {
                     PhysicalWorkArea = physicalWork,
+                    PhysicalBounds = physicalBounds,
+                    EffectiveDpi = MonitorDpiProbe.ReadEffectiveDpi(physicalBounds, hMon),
                 };
                 monitors.Add(m);
                 if ((info.dwFlags & MONITORINFOF_PRIMARY) != 0)

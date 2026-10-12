@@ -129,6 +129,28 @@ public sealed class DiagnosticLogTests
     }
 
     [Fact]
+    public void placement_detail_records_only_allowlisted_geometry_text()
+    {
+        using var log = new DiagnosticLog("unused-test-directory", enabled: false);
+
+        log.Record("placement-result", new PlacementDiagnosticDetail(
+            "actualMonitor=\\\\.\\DISPLAY1; workArea=(0,0,3840,2076); windowDpi=168; note=\"C:/Users/名前\""));
+        log.Record("placement-attempt", new InvalidOperationException("requested=(1,2,3,4) sensitive"));
+        log.Record("placement-trace", new PlacementDiagnosticDetail(new string('9', PlacementDiagnosticDetail.MaximumLength + 50)));
+
+        System.Collections.Generic.IReadOnlyList<string> lines = log.Snapshot();
+        Assert.Contains(
+            "category=placement-result detail=actualMonitor=\\\\.\\DISPLAY1; workArea=(0,0,3840,2076); windowDpi=168; note=?C:?Users????",
+            lines[0],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("名前", lines[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("sensitive", lines[1], StringComparison.Ordinal);
+        Assert.Contains("exception=InvalidOperationException", lines[1], StringComparison.Ordinal);
+        Assert.EndsWith(new string('9', PlacementDiagnosticDetail.MaximumLength), lines[2], StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('9', PlacementDiagnosticDetail.MaximumLength + 1), lines[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void disabled_log_keeps_bounded_memory_history_without_creating_files()
     {
         string directory = Path.Combine(Path.GetTempPath(), $"dsm-log-{Guid.NewGuid():N}");

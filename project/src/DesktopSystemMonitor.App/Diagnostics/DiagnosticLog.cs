@@ -8,6 +8,8 @@ namespace DesktopSystemMonitor.App.Diagnostics;
 /// Keeps a bounded in-memory event history and optionally writes a small,
 /// rotating local log. Callers pass event categories and exception types only;
 /// metric values, process names, and full PDH instance paths are never logged.
+/// The only free-form text is a <see cref="PlacementDiagnosticDetail"/>, which is
+/// limited to window geometry, DPI, and monitor device names.
 /// File I/O is serialized on a dedicated writer and never runs under the
 /// in-memory history lock.
 /// </summary>
@@ -73,9 +75,12 @@ public sealed class DiagnosticLog : IDisposable
     public void Record(string category, Exception? exception = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(category);
-        string suffix = exception is null
-            ? string.Empty
-            : $" exception={exception.GetType().Name} hresult=0x{exception.HResult:X8}";
+        string suffix = exception switch
+        {
+            null => string.Empty,
+            PlacementDiagnosticDetail detail => $" detail={PlacementDiagnosticDetail.Sanitize(detail.Detail)}",
+            _ => $" exception={exception.GetType().Name} hresult=0x{exception.HResult:X8}",
+        };
         RecordLine($"{DateTimeOffset.UtcNow:O} category={category}{suffix}");
     }
 

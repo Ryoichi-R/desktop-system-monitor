@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Protected Use current position from capturing a mismatched native frame;
+  it preserves the placement draft until size verification succeeds.
+  Per-monitor diagnostic entries now include physical bounds, work areas and
+  independently measured effective DPI, with unavailable values marked
+  explicitly. Added full bitmap comparisons after synthetic DPI frame repair
+  for standard/reduced layouts, UI scales and edge-fade backgrounds.
+  Physical display-connect acceptance and installed-build updates remain pending.
+
+- Fixed the Windows widget keeping a 100%-sized native frame after a display
+  was connected, which clipped the 175%-scaled CPU, memory, and other rows.
+  A `WM_DPICHANGED` whose suggested rectangle still has the previous DPI's
+  pixel size leaves WPF at the new DPI with an unchanged `Width`, so the
+  existing position correction reported success for a frame that was inside
+  the work area but too small. Each placement attempt now synchronizes the
+  native size with the size derived from the appearance settings (WPF size
+  first, then an exact pixel size through a separate size-only API) at a
+  confirmed window DPI, and succeeds only when size and position both match.
+  The split background now follows the information window's native pixel
+  rectangle. Captures from a mismatched frame are not saved. Opt-in
+  diagnostics now record placement geometry, DPI, monitor device names, and
+  the arrival order of DPI/size notifications through an allowlisted detail
+  field; other exception messages are still not written.
 - Fixed the Windows network speed being reported several times too high.
   `GetIfTable2` also returns NDIS filter / intermediate-driver rows that carry
   the same traffic as the physical adapter, and the automatic mode summed every

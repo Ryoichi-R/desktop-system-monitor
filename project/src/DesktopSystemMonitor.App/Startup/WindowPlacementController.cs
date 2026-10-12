@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using DesktopSystemMonitor.App.Diagnostics;
 using DesktopSystemMonitor.Core.Layout;
 using DesktopSystemMonitor.Core.Settings;
 using DesktopSystemMonitor.Windows.Window;
@@ -15,6 +17,16 @@ internal interface IWindowPlacementSurface
     double? CurrentDpi { get; }
     bool IsLoaded { get; }
     string DiagnosticDescription => $"PhysicalBounds={Bounds}; windowDpi={CurrentDpi}";
+
+    /// <summary>
+    /// Brings the native window size in line with the required content size
+    /// at the confirmed window DPI. Surfaces without separate native and
+    /// logical sizes report <see cref="WindowSizeSyncResult.Unchecked"/>.
+    /// </summary>
+    WindowSizeSyncResult SynchronizeSize() => WindowSizeSyncResult.Unchecked;
+
+    /// <summary>Read-only form of <see cref="SynchronizeSize"/>.</summary>
+    WindowSizeSyncResult CheckSize() => WindowSizeSyncResult.Unchecked;
     bool TrySetPosition(double left, double top);
     event Action? LocationChanged;
     event Action? Closing;
@@ -57,6 +69,9 @@ internal sealed class WindowPlacementController : IDisposable
     private PlacementPreviewSession? _previewSession;
     private AppSettings? _previewSettings;
     private bool _applyingAutomaticPosition;
+    private bool _placementInProgress;
+    private VerifiedWindowState? _lastVerifiedState;
+    private long _reflowWave;
     private bool _disposed;
 
     internal WindowPlacementController(
@@ -66,7 +81,7 @@ internal sealed class WindowPlacementController : IDisposable
         Action<string, Exception?> recordDiagnostic,
         Dispatcher dispatcher)
     {
-        var surface = new MainWindowPlacementSurface(window);
+        var surface = new MainWindowPlacementSurface(window, recordDiagnostic);
         _window = surface;
         _surfaceLifetime = surface;
         _getSettings = getSettings;
@@ -272,7 +287,7 @@ internal sealed class WindowPlacementController : IDisposable
         _window.LocationChanged += OnWindowLocationChanged;
         _window.Closing += OnWindowClosing;
         _window.DisplayConfigurationChanged += BeginDisplayReflow;
-        _window.BoundsChanged += BeginDisplayReflow;
+        _window.BoundsChanged += OnWindowBoundsChanged;
         _window.UserMoveStarted += OnUserMoveStarted;
         _window.UserMoveCompleted += OnUserMoveCompleted;
     }
@@ -300,6 +315,10 @@ internal sealed class WindowPlacementController : IDisposable
             RecordDiagnostic("placement-size-not-ready", null);
             return;
         }
+        if (!IsSizeSynchronizedForCapture())
+        {
+            return;
+        }
         MonitorInfo monitor = WindowAnchor.FindMonitorForWidget(widget, layout.All, layout.Primary);
         bool captured = WindowAnchor.TryCaptureIntent(widget, monitor, out WindowPlacementIntent intent);
         double scale = DpiScale(monitor);
@@ -322,7 +341,7 @@ internal sealed class WindowPlacementController : IDisposable
 
     internal AppSettings CaptureCurrentWindowPosition(AppSettings basis)
     {
-        if (!_window.IsLoaded)
+        if (_disposed || !_window.IsLoaded || !IsSizeSynchronizedForCapture())
         {
             return basis;
         }
@@ -404,6 +423,10 @@ internal sealed class WindowPlacementController : IDisposable
         {
             return;
         }
+        if (!IsSizeSynchronizedForCapture())
+        {
+            return;
+        }
         MonitorLayout current = ToPhysicalLayout(_enumerateMonitors());
         Rect widget = CurrentWindowRect();
         UpdateDisplaySnapshot(current.All, current.Primary, widget);
@@ -415,11 +438,38 @@ internal sealed class WindowPlacementController : IDisposable
         }
     }
 
+    /// <summary>
+    /// Size, DPI, and first-render notifications start a reflow wave unless
+    /// they are echoes of the placement currently being verified, or report
+    /// exactly the native bounds and DPI that the last wave already verified.
+    /// The verification loop re-reads the window after its own resize and
+    /// move, so those echoes cannot leave a mismatch behind.
+    /// </summary>
+    private void OnWindowBoundsChanged()
+    {
+        if (_disposed || _placementInProgress)
+        {
+            return;
+        }
+        if (!_displayReflow.Pending
+            && _lastVerifiedState is VerifiedWindowState verified
+            && verified.Bounds == CurrentWindowRect()
+            && verified.Dpi == _window.CurrentDpi)
+        {
+            return;
+        }
+        BeginDisplayReflow();
+    }
+
     private void BeginDisplayReflow()
     {
         if (_disposed)
         {
             return;
+        }
+        if (!_displayReflow.Pending)
+        {
+            _reflowWave++;
         }
         _positionPersistTimer.Stop();
         TimeSpan? delay = _displayReflow.BeginWave(_utcNow());
@@ -626,7 +676,32 @@ internal sealed class WindowPlacementController : IDisposable
 
     private Rect CurrentWindowRect() => _window.Bounds;
 
+    /// <summary>
+    /// Each attempt synchronizes the native size with the required content
+    /// size first, then places the window from the re-read native bounds and
+    /// verifies size and position together. A window that is inside the work
+    /// area but still has a stale pixel size is not a success.
+    /// </summary>
     private bool ApplyVerifiedPlacement(
+        AppSettings settings,
+        Func<MonitorLayout, Rect, Rect> compute,
+        out MonitorLayout layout,
+        out Rect actual)
+    {
+        _placementInProgress = true;
+        try
+        {
+            bool placed = ApplyVerifiedPlacementCore(settings, compute, out layout, out actual);
+            _lastVerifiedState = placed ? new VerifiedWindowState(actual, _window.CurrentDpi) : null;
+            return placed;
+        }
+        finally
+        {
+            _placementInProgress = false;
+        }
+    }
+
+    private bool ApplyVerifiedPlacementCore(
         AppSettings settings,
         Func<MonitorLayout, Rect, Rect> compute,
         out MonitorLayout layout,
@@ -634,20 +709,10 @@ internal sealed class WindowPlacementController : IDisposable
     {
         layout = ToPhysicalLayout(_enumerateMonitors());
         actual = CurrentWindowRect();
+        WindowSizeSyncResult size = WindowSizeSyncResult.Unchecked;
         for (int attempt = 0; attempt < MaximumPlacementAttempts; attempt++)
         {
-            if (!IsFinitePositive(actual.Width) || !IsFinitePositive(actual.Height))
-            {
-                RecordDiagnostic("placement-size-not-ready", null);
-                return false;
-            }
-            Rect requested = compute(layout, actual);
-            RecordDiagnostic("placement-attempt", new InvalidOperationException(
-                $"Attempt={attempt + 1}; mode={settings.PlacementMode}; anchor={settings.PlacementAnchor}; requestedMonitor={settings.SavedMonitorDeviceName}; requested=({requested.Left},{requested.Top},{requested.Width},{requested.Height}); {_window.DiagnosticDescription}"));
-            if (!ApplyWindowRect(requested))
-            {
-                return false;
-            }
+            size = SynchronizeSize(attempt, "before-move");
             actual = CurrentWindowRect();
             layout = ToPhysicalLayout(_enumerateMonitors());
             if (!IsFinitePositive(actual.Width) || !IsFinitePositive(actual.Height))
@@ -655,10 +720,39 @@ internal sealed class WindowPlacementController : IDisposable
                 RecordDiagnostic("placement-size-not-ready", null);
                 return false;
             }
+            if (!size.IsSynchronized)
+            {
+                continue;
+            }
+            foreach (MonitorInfo monitor in layout.All)
+            {
+                // Separate bounded entries keep every monitor's measurements
+                // intact even when the placement-attempt line is truncated.
+                RecordDiagnostic("placement-monitor", new PlacementDiagnosticDetail(DescribeMonitor(monitor)));
+            }
+            Rect requested = compute(layout, actual);
+            RecordDiagnostic("placement-attempt", new PlacementDiagnosticDetail(
+                $"wave={_reflowWave}; attempt={attempt + 1}; mode={settings.PlacementMode}; anchor={settings.PlacementAnchor}; requestedMonitor={settings.SavedMonitorDeviceName}; requested=({FormatRect(requested)}); monitors={FormatMonitors(layout)}; {_window.DiagnosticDescription}"));
+            if (!ApplyWindowRect(requested))
+            {
+                return false;
+            }
+            size = SynchronizeSize(attempt, "after-move");
+            actual = CurrentWindowRect();
+            layout = ToPhysicalLayout(_enumerateMonitors());
+            if (!IsFinitePositive(actual.Width) || !IsFinitePositive(actual.Height))
+            {
+                RecordDiagnostic("placement-size-not-ready", null);
+                return false;
+            }
+            if (!size.IsSynchronized)
+            {
+                continue;
+            }
             Rect expected = compute(layout, actual);
             MonitorInfo target = WindowAnchor.FindMonitorForWidget(expected, layout.All, layout.Primary);
-            RecordDiagnostic("placement-result", new InvalidOperationException(
-                $"Attempt={attempt + 1}; actualMonitor={target.DeviceName}; workArea={target.WorkArea}; expected={expected}; {_window.DiagnosticDescription}"));
+            RecordDiagnostic("placement-result", new PlacementDiagnosticDetail(
+                $"wave={_reflowWave}; attempt={attempt + 1}; actualMonitor={target.DeviceName}; workArea=({FormatRect(target.WorkArea)}); expected=({FormatRect(expected)}); actual=({FormatRect(actual)}); size={size.Status}; {_window.DiagnosticDescription}"));
             bool oversized = actual.Width > target.WorkArea.Width + 1 || actual.Height > target.WorkArea.Height + 1;
             if (Math.Abs(actual.Left - expected.Left) <= 1 && Math.Abs(actual.Top - expected.Top) <= 1
                 && (oversized || Fits(actual, target.WorkArea, tolerance: 1)))
@@ -670,10 +764,74 @@ internal sealed class WindowPlacementController : IDisposable
                 return true;
             }
         }
-        RecordDiagnostic("placement-verification-failure", new InvalidOperationException(
-            $"Attempts={MaximumPlacementAttempts}; monitor={settings.SavedMonitorDeviceName}; bounds=({actual.Left},{actual.Top},{actual.Right},{actual.Bottom})."));
+        if (!size.IsSynchronized)
+        {
+            RecordDiagnostic("placement-size-sync-failure", new PlacementDiagnosticDetail(
+                $"wave={_reflowWave}; attempts={MaximumPlacementAttempts}; status={size.Status}; {size.Detail}"));
+            return false;
+        }
+        RecordDiagnostic("placement-verification-failure", new PlacementDiagnosticDetail(
+            $"wave={_reflowWave}; attempts={MaximumPlacementAttempts}; monitor={settings.SavedMonitorDeviceName}; bounds=({FormatRect(actual)})"));
         return false;
     }
+
+    /// <summary>
+    /// A frame whose native size does not match the required content size
+    /// would capture a wrong right edge and placement ratio. Such a capture is
+    /// skipped and a reflow wave repairs the size before the next save.
+    /// </summary>
+    private bool IsSizeSynchronizedForCapture()
+    {
+        WindowSizeSyncResult size;
+        try
+        {
+            size = _window.CheckSize();
+        }
+        catch (Exception ex)
+        {
+            RecordDiagnostic("placement-size-sync-exception", ex);
+            return false;
+        }
+        if (size.IsSynchronized)
+        {
+            return true;
+        }
+        RecordDiagnostic("placement-capture-size-mismatch", new PlacementDiagnosticDetail(
+            $"wave={_reflowWave}; status={size.Status}; {size.Detail}"));
+        BeginDisplayReflow();
+        return false;
+    }
+
+    private WindowSizeSyncResult SynchronizeSize(int attempt, string phase)
+    {
+        WindowSizeSyncResult result;
+        try
+        {
+            result = _window.SynchronizeSize();
+        }
+        catch (Exception ex)
+        {
+            RecordDiagnostic("placement-size-sync-exception", ex);
+            return new WindowSizeSyncResult(WindowSizeSyncStatus.NotReady, "exception");
+        }
+        if (result.Status != WindowSizeSyncStatus.Matched)
+        {
+            RecordDiagnostic("placement-size-sync", new PlacementDiagnosticDetail(
+                $"wave={_reflowWave}; attempt={attempt + 1}; phase={phase}; status={result.Status}; {result.Detail}"));
+        }
+        return result;
+    }
+
+    private static string FormatRect(Rect rect) =>
+        $"{WindowPixelSize.Format(rect.Left)},{WindowPixelSize.Format(rect.Top)},{WindowPixelSize.Format(rect.Width)},{WindowPixelSize.Format(rect.Height)}";
+
+    private static string FormatMonitors(MonitorLayout layout) => string.Join(
+        " ",
+        layout.All.Select(monitor =>
+            $"{monitor.DeviceName}:work=({FormatRect(monitor.WorkArea)}):dpi={WindowPixelSize.Format(monitor.Dpi)}{(ReferenceEquals(monitor, layout.Primary) || string.Equals(monitor.DeviceName, layout.Primary.DeviceName, StringComparison.OrdinalIgnoreCase) ? ":primary" : string.Empty)}"));
+
+    internal static string DescribeMonitor(MonitorInfo monitor) =>
+        $"device={monitor.DeviceName}; physicalBounds={(monitor.PhysicalBounds is Rect bounds ? $"({FormatRect(bounds)})" : "unavailable")}; physicalWorkArea={(monitor.PhysicalWorkArea is Rect work ? $"({FormatRect(work)})" : "unavailable")}; effectiveDpi={(monitor.EffectiveDpi is double dpi && double.IsFinite(dpi) && dpi > 0 ? WindowPixelSize.Format(dpi) : "unavailable")}; placementDpi={WindowPixelSize.Format(monitor.Dpi)}";
 
     private static Rect ComputeRestoredRect(PlacementPreviewSession session, MonitorLayout layout, Rect bounds)
     {
@@ -751,13 +909,14 @@ internal sealed class WindowPlacementController : IDisposable
         _window.LocationChanged -= OnWindowLocationChanged;
         _window.Closing -= OnWindowClosing;
         _window.DisplayConfigurationChanged -= BeginDisplayReflow;
-        _window.BoundsChanged -= BeginDisplayReflow;
+        _window.BoundsChanged -= OnWindowBoundsChanged;
         _window.UserMoveStarted -= OnUserMoveStarted;
         _window.UserMoveCompleted -= OnUserMoveCompleted;
         _surfaceLifetime?.Dispose();
     }
 
     private sealed record DisplayLayoutSnapshot(MonitorInfo[] Monitors, MonitorInfo Primary, Rect WidgetRect);
+    private readonly record struct VerifiedWindowState(Rect Bounds, double? Dpi);
     private sealed record PlacementPreviewSession(
         AppSettings OriginalSettings,
         Rect OriginalBounds,
@@ -768,10 +927,13 @@ internal sealed class WindowPlacementController : IDisposable
 internal sealed class MainWindowPlacementSurface : IWindowPlacementSurface, IDisposable
 {
     private readonly MainWindow _window;
+    private readonly Action<string, Exception?>? _recordDiagnostic;
+    private readonly long _createdTimestamp = Stopwatch.GetTimestamp();
 
-    internal MainWindowPlacementSurface(MainWindow window)
+    internal MainWindowPlacementSurface(MainWindow window, Action<string, Exception?>? recordDiagnostic = null)
     {
         _window = window;
+        _recordDiagnostic = recordDiagnostic;
         _window.LocationChanged += HandleLocationChanged;
         _window.Closing += HandleClosing;
         _window.DisplayConfigurationChanged += HandleDisplayConfigurationChanged;
@@ -780,31 +942,42 @@ internal sealed class MainWindowPlacementSurface : IWindowPlacementSurface, IDis
         _window.ContentRendered += HandleContentRendered;
         _window.UserMoveStarted += HandleUserMoveStarted;
         _window.UserMoveCompleted += HandleUserMoveCompleted;
+        _window.NativeSizeMessageObserved += HandleNativeSizeMessage;
     }
 
-    public Rect Bounds
-    {
-        get
-        {
-            IntPtr handle = _window.Handle;
-            if (WindowPlacementNativeApi.TryGetBounds(handle, out Rect bounds))
-            {
-                return bounds;
-            }
+    public Rect Bounds => ReadBounds(out _);
 
-            double scale = WindowPlacementNativeApi.GetDpiForWindow(handle) / 96d;
-            double width = _window.ActualWidth > 0 ? _window.ActualWidth : _window.Width;
-            double height = _window.ActualHeight > 0 ? _window.ActualHeight : _window.Height;
-            double left = double.IsFinite(_window.Left) ? _window.Left * scale : 0;
-            double top = double.IsFinite(_window.Top) ? _window.Top * scale : 0;
-            return new Rect(left, top, width * scale, height * scale);
+    private Rect ReadBounds(out bool native)
+    {
+        IntPtr handle = _window.Handle;
+        if (WindowPlacementNativeApi.TryGetBounds(handle, out Rect bounds))
+        {
+            native = true;
+            return bounds;
         }
+
+        native = false;
+        double scale = WindowPlacementNativeApi.GetDpiForWindow(handle) / 96d;
+        double width = _window.ActualWidth > 0 ? _window.ActualWidth : _window.Width;
+        double height = _window.ActualHeight > 0 ? _window.ActualHeight : _window.Height;
+        double left = double.IsFinite(_window.Left) ? _window.Left * scale : 0;
+        double top = double.IsFinite(_window.Top) ? _window.Top * scale : 0;
+        return new Rect(left, top, width * scale, height * scale);
     }
 
     public bool IsLoaded => _window.IsLoaded;
 
-    public string DiagnosticDescription =>
-        $"RequestedDip=({_window.Width},{_window.Height}); actualDip=({_window.ActualWidth},{_window.ActualHeight}); visualScale=({System.Windows.Media.VisualTreeHelper.GetDpi(_window).DpiScaleX},{System.Windows.Media.VisualTreeHelper.GetDpi(_window).DpiScaleY}); transform={PresentationSource.FromVisual(_window)?.CompositionTarget?.TransformToDevice}; physicalBounds={Bounds}; windowDpi={CurrentDpi}";
+    public string DiagnosticDescription
+    {
+        get
+        {
+            Rect bounds = ReadBounds(out bool native);
+            System.Windows.DpiScale visual = System.Windows.Media.VisualTreeHelper.GetDpi(_window);
+            System.Windows.Media.Matrix? transform = WindowSizeSynchronizer.DeviceTransform(_window.Handle);
+            System.Windows.Size required = _window.RequiredWindowSizeDip;
+            return $"requiredDip=({F(required.Width)},{F(required.Height)}); requestedDip=({F(_window.Width)},{F(_window.Height)}); actualDip=({F(_window.ActualWidth)},{F(_window.ActualHeight)}); visualScale=({F(visual.DpiScaleX)},{F(visual.DpiScaleY)}); transform=({F(transform?.M11 ?? double.NaN)},{F(transform?.M22 ?? double.NaN)}); physicalBounds=({F(bounds.Left)},{F(bounds.Top)},{F(bounds.Width)},{F(bounds.Height)}); boundsSource={(native ? "native" : "synthesized")}; windowDpi={CurrentDpi}";
+        }
+    }
 
     public double? CurrentDpi
     {
@@ -813,6 +986,18 @@ internal sealed class MainWindowPlacementSurface : IWindowPlacementSurface, IDis
             uint dpi = WindowPlacementNativeApi.GetDpiForWindow(_window.Handle);
             return dpi > 0 ? dpi : null;
         }
+    }
+
+    public WindowSizeSyncResult SynchronizeSize()
+    {
+        _ = _window.Handle;
+        return _window.SynchronizeWindowSize(apply: true);
+    }
+
+    public WindowSizeSyncResult CheckSize()
+    {
+        _ = _window.Handle;
+        return _window.SynchronizeWindowSize(apply: false);
     }
 
     public bool TrySetPosition(double left, double top) =>
@@ -828,11 +1013,46 @@ internal sealed class MainWindowPlacementSurface : IWindowPlacementSurface, IDis
     private void HandleLocationChanged(object? sender, EventArgs e) => LocationChanged?.Invoke();
     private void HandleClosing(object? sender, CancelEventArgs e) => Closing?.Invoke();
     private void HandleDisplayConfigurationChanged() => DisplayConfigurationChanged?.Invoke();
-    private void HandleBoundsChanged(object sender, SizeChangedEventArgs e) => BoundsChanged?.Invoke();
-    private void HandleDpiChanged(object sender, System.Windows.DpiChangedEventArgs e) => BoundsChanged?.Invoke();
+
+    private void HandleBoundsChanged(object sender, SizeChangedEventArgs e)
+    {
+        Trace($"SizeChanged; newDip=({F(e.NewSize.Width)},{F(e.NewSize.Height)})");
+        BoundsChanged?.Invoke();
+    }
+
+    private void HandleDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
+    {
+        Trace($"DpiChanged; oldDpi={F(e.OldDpi.PixelsPerInchX)}; newDpi={F(e.NewDpi.PixelsPerInchX)}");
+        BoundsChanged?.Invoke();
+    }
+
     private void HandleContentRendered(object? sender, EventArgs e) => BoundsChanged?.Invoke();
     private void HandleUserMoveStarted() => UserMoveStarted?.Invoke();
     private void HandleUserMoveCompleted() => UserMoveCompleted?.Invoke();
+    private void HandleNativeSizeMessage(string message) => Trace(message);
+
+    /// <summary>
+    /// Records the arrival order of native and WPF size/DPI notifications with
+    /// a monotonic offset so a display-connect sequence can be reconstructed.
+    /// </summary>
+    private void Trace(string message)
+    {
+        if (_recordDiagnostic is null)
+        {
+            return;
+        }
+        double elapsedMs = Stopwatch.GetElapsedTime(_createdTimestamp).TotalMilliseconds;
+        try
+        {
+            _recordDiagnostic("placement-trace", new PlacementDiagnosticDetail($"tMs={F(elapsedMs)}; event={message}"));
+        }
+        catch
+        {
+            // An unavailable diagnostic sink must not affect window notifications.
+        }
+    }
+
+    private static string F(double value) => WindowPixelSize.Format(value);
 
     public void Dispose()
     {
@@ -844,6 +1064,7 @@ internal sealed class MainWindowPlacementSurface : IWindowPlacementSurface, IDis
         _window.ContentRendered -= HandleContentRendered;
         _window.UserMoveStarted -= HandleUserMoveStarted;
         _window.UserMoveCompleted -= HandleUserMoveCompleted;
+        _window.NativeSizeMessageObserved -= HandleNativeSizeMessage;
     }
 }
 

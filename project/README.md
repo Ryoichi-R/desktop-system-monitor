@@ -190,6 +190,8 @@ root BATへx64用の再ビルド機能を統合したため、旧`project\rebuil
 
 設定の「表示位置」の「表示」は、選んだモニター・四隅・余白だけを一時表示する。外観や倍率など他の未保存変更は適用しない。「保存」が成功した時に設定が確定し、キャンセル・Esc・×では元の位置へ戻る。画面構成や表示サイズが変わっている場合は、現在の作業領域内へ補正する。余白は有限の0～200 DIPで入力する。位置の適用または設定の保存に失敗した場合は、設定画面を閉じずに再試行できる。ウィジェットが作業領域より大きい場合は、その旨を表示し、勝手に縮小しない。
 
+ディスプレイの接続・切断や表示倍率の変更後は、外観設定（表示幅、表示項目、表示倍率、背景の拡張）から求めた大きさと、そのウィンドウの現在のDPIからウィンドウ枠の物理サイズを再計算し、枠と表示内容の大きさを揃えてから位置を補正する。枠が画面内にあっても大きさが内容と一致しない状態は配置成功として扱わず、その状態の位置は保存しない。補正は画面構成変更の通知がまとまってから行い（最大約2秒）、最大3回で打ち切る。「現在位置を使用」でも枠と内容のサイズ一致を確認し、不整合中は元の配置情報を保持する。補正後にもう一度操作すると、その時点の位置を取り込める。
+
 「常に手前」は、`WS_EX_TOPMOST` の脱落を既存の2秒周期で修復し、外部ウィンドウのforeground変更・移動完了・デスクトップ切り替えをWinEventで検知した場合は、フォーカスを奪わず `SetWindowPos(HWND_TOPMOST)` を再適用してTopMost帯内の順位も回復する。再適用は250ms以上間隔を空け、設定画面のowned dialogは所有関係を維持する。設定画面の終了、Explorer再起動、表示構成変更、full-screen自動非表示からの復帰、session unlockでも同じ修復処理を実行する。session lock中、非表示中、通常／デスクトップ上モードではフックを停止する。他のアプリが継続的に再昇格する場合の無限競争、UACのセキュアデスクトップ、ロック画面、別セッション、排他的全画面を覆うことは保証しない。
 
 ## テスト
@@ -284,7 +286,7 @@ Desktop System Monitorの第一者コードは[MIT License](../LICENSE)で提供
 - `AutoHideOnFullScreen`: 常に手前モードのfull-screen自動非表示
 - `DiagnosticLoggingEnabled`: `%LOCALAPPDATA%\DesktopSystemMonitor\logs` への制限付きログ。有効時は自動非表示の開始・終了を `fullscreen-auto-hide-enter` / `fullscreen-auto-hide-exit`、sampling停止・再開を `sampling-suspend-enter` / `sampling-suspend-exit` として記録する（ウィンドウ名・クラス名・PIDは記録しない）
 
-診断ログは、タスクトレイの「設定」から「診断ログを有効にする（最大1 MB × 5世代）」を選択して有効化する。layer不一致を検知した場合は `layer-repair-enter`、Win32適用または観測に失敗した場合は `layer-apply-failure`、回復した場合は `layer-repair-recovered` を確認する。記録値は要求layer、観測状態、固定trigger/failure分類、Win32 error、連続失敗数に限定し、HWND、他プロセス名・PID、ウィンドウタイトルは記録しない。
+診断ログは、タスクトレイの「設定」から「診断ログを有効にする（最大1 MB × 5世代）」を選択して有効化する。layer不一致を検知した場合は `layer-repair-enter`、Win32適用または観測に失敗した場合は `layer-apply-failure`、回復した場合は `layer-repair-recovered` を確認する。記録値は要求layer、観測状態、固定trigger/failure分類、Win32 error、連続失敗数に限定し、HWND、他プロセス名・PID、ウィンドウタイトルは記録しない。表示位置・サイズの不整合を調べる場合は `placement-attempt` / `placement-result` / `placement-size-sync` / `placement-trace` / `placement-monitor` を確認する。これらは要求DIPサイズ、期待・実測の物理サイズ、ウィンドウDPI、WPFの変換倍率、各モニターのデバイス名（例: `\\.\DISPLAY1`）・物理境界・作業領域・測定した有効DPI（未取得なら `unavailable`）、`WM_DPICHANGED` の推奨矩形、DPI・サイズ通知の到着順だけを記録し、英数字と一部の区切り記号以外の文字は置換する。
 
 破損時は自動で `.bak` から復旧し、それも失敗した場合は既定値で起動する。
 

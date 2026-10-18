@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworks Condition="'$(MacAvaloniaOnly)' == 'true'">net10.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(MacAvaloniaOnly)' != 'true'">net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+    <UseWPF Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">true</UseWPF>
+    <UseWindowsForms Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">true</UseWindowsForms>
+    <RootNamespace>DesktopSystemMonitor.App</RootNamespace>
+    <AssemblyName>DesktopSystemMonitor</AssemblyName>
+    <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">Assets\DesktopSystemMonitor.ico</ApplicationIcon>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Platforms>AnyCPU;x64;ARM64</Platforms>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
+    <!--
+      WFO0003: WinForms wants Application.SetHighDpiMode, but this is primarily
+      a WPF app and DPI is configured via app.manifest (PerMonitorV2).
+      NotifyIcon is the only WinForms consumer and it does not draw scaled
+      surfaces itself.
+    -->
+    <NoWarn Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">$(NoWarn);CA1416;WFO0003</NoWarn>
+    <ApplicationHighDpiMode Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopSystemMonitor.Core\DesktopSystemMonitor.Core.csproj" />
+    <ProjectReference Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" Include="..\DesktopSystemMonitor.Windows\DesktopSystemMonitor.Windows.csproj" />
+    <ProjectReference Condition="'$(TargetFramework)' == 'net10.0'" Include="..\DesktopSystemMonitor.Mac\DesktopSystemMonitor.Mac.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <EmbeddedResource Include="Assets\DesktopSystemMonitor.ico" LogicalName="DesktopSystemMonitor.App.MacTray.ico" />
+    <PackageReference Include="Avalonia" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DesktopSystemMonitor.App.Tests" />
+    <InternalsVisibleTo Include="DesktopSystemMonitor.App.Avalonia.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" Include="Assets\DesktopSystemMonitor.ico"
+                      LogicalName="DesktopSystemMonitor.App.Assets.DesktopSystemMonitor.ico" />
+    <Resource Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" Include="Assets\DesktopSystemMonitorIcon-v2.png" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <Compile Remove="**\*.cs" />
+    <Compile Include="Avalonia\**\*.cs" />
+    <Compile Include="BuildInformation.cs" />
+    <Page Remove="**\*.xaml" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
+    <Compile Remove="Avalonia\**\*.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "productId", "productName", "productVersion", "packageChannel", "candidateLineageId", "sourceTreeDigest", "dependencyFingerprint", "createdAtUtc", "layoutContract", "publishContract", "runtimes"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "productId": { "const": "desktop-system-monitor" },
+    "productName": { "const": "Desktop System Monitor" },
+    "productVersion": { "type": "string", "minLength": 1 },
+    "packageChannel": { "enum": ["local-preview", "validation", "public-release"] },
+    "candidateLineageId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "dependencyFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "createdAtUtc": { "type": "string", "minLength": 1 },
+    "layoutContract": { "const": "single-file-v1" },
+    "publishContract": {
+      "type": "object",
+      "required": ["configuration", "selfContained", "publishSingleFile", "includeNativeLibrariesForSelfExtract", "publishTrimmed", "enableCompressionInSingleFile", "includeAllContentForSelfExtract", "continuousIntegrationBuild", "debugType", "debugSymbols"],
+      "properties": {
+        "configuration": { "const": "Release" },
+        "selfContained": { "const": true },
+        "publishSingleFile": { "const": true },
+        "includeNativeLibrariesForSelfExtract": { "const": true },
+        "publishTrimmed": { "const": false },
+        "enableCompressionInSingleFile": { "const": false },
+        "includeAllContentForSelfExtract": { "const": false },
+        "continuousIntegrationBuild": { "const": true },
+        "debugType": { "const": "None" },
+        "debugSymbols": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "runtimes": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^win-(x64|arm64)$": {
+          "type": "object",
+          "required": ["runtime", "artifactRole", "archive", "archiveSha256", "contentDigest", "executable", "executableSha256", "peMachine", "runtimeVersion", "resolvedDependencies", "totalUncompressedBytes", "requiredFreeBytes", "managedFiles", "distributionStatus", "readinessStatus", "candidateLineageId", "sourceTreeDigest", "artifactSha256"],
+          "properties": {
+            "runtime": { "enum": ["win-x64", "win-arm64"] },
+            "artifactRole": { "const": "installer-payload" },
+            "archive": { "type": "string", "pattern": "^[^\\/:*?\"<>|]+\\.zip$" },
+            "archiveSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "contentDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "executable": { "const": "DesktopSystemMonitor.exe" },
+            "executableSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "peMachine": { "type": "string" },
+            "runtimeVersion": { "type": "string", "minLength": 1 },
+            "resolvedDependencies": {
+              "type": ["object", "null"],
+              "required": ["runtimePack", "runtimeVersion", "windowsDesktopPack", "windowsDesktopVersion", "ilLinkPack", "ilLinkVersion", "assetsSha256"],
+              "properties": {
+                "runtimePack": { "type": "string", "minLength": 1 },
+                "runtimeVersion": { "type": "string", "minLength": 1 },
+                "windowsDesktopPack": { "type": "string", "minLength": 1 },
+                "windowsDesktopVersion": { "type": "string", "minLength": 1 },
+                "ilLinkPack": { "type": ["string", "null"] },
+                "ilLinkVersion": { "type": ["string", "null"] },
+                "assetsSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+              },
+              "additionalProperties": false
+            },
+            "totalUncompressedBytes": { "type": "integer", "minimum": 1 },
+            "requiredFreeBytes": { "type": "integer", "minimum": 1 },
+            "managedFiles": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "required": ["path", "size", "sha256"],
+                "properties": {
+                  "path": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.?(/|$))(?!.*:).+" },
+                  "size": { "type": "integer", "minimum": 0 },
+                  "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "distributionStatus": { "enum": ["local-only", "validation-only", "public-release-approved"] },
+            "readinessStatus": { "enum": ["PASS", "CONDITIONAL", "BLOCKED"] },
+            "candidateLineageId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "sourceTreeDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "artifactSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

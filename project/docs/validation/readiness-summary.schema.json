@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/desktop-system-monitor/readiness-summary.schema.json",
+  "title": "Desktop System Monitor public readiness summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "productVersion",
+    "candidateLineageId",
+    "sourceTreeDigest",
+    "generatedAtUtc",
+    "architectures",
+    "completedPhases",
+    "knownLimitations",
+    "evidenceHashes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "productVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "candidateLineageId": {
+      "description": "Architecture-independent identity derived from source, dependencies, SDK, product version, and publish contract.",
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceTreeDigest": {
+      "description": "Digest of the production source file set shared by all RID decisions for this candidate.",
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "architectures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["win-x64", "win-arm64"],
+      "properties": {
+        "win-x64": { "$ref": "#/$defs/architectureDecision" },
+        "win-arm64": { "$ref": "#/$defs/architectureDecision" }
+      }
+    },
+    "completedPhases": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["DSM-1", "DSM-2", "DSM-3", "DSM-4"] },
+      "uniqueItems": true
+    },
+    "knownLimitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "evidenceHashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+    }
+  },
+  "$defs": {
+    "architectureDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifactSha256", "completedTests", "blockers"],
+      "properties": {
+        "status": { "type": "string", "enum": ["PASS", "CONDITIONAL", "BLOCKED"] },
+        "artifactSha256": {
+          "description": "SHA-256 of the unsigned validation artifact for this RID only.",
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "completedTests": { "type": "array", "items": { "type": "string" } },
+        "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

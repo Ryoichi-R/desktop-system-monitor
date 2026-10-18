@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Test projects lived outside the product directory before repository
+    separation and therefore did not inherit the product's Recommended analyzer
+    set or global nullable setting. Keep that contract explicit here so moving
+    files does not silently change the test compilation surface. Individual test
+    projects continue to opt in to nullable where they already did so.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

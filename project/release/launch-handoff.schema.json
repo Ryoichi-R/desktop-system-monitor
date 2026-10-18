@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "repositoryUrl", "releaseUrl", "version", "tag", "assets", "publisher", "license", "support", "releaseChannel", "audit"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "repositoryUrl": { "type": "string", "format": "uri" },
+    "releaseUrl": { "type": "string", "format": "uri" },
+    "version": { "type": "string" },
+    "tag": { "type": "string" },
+    "assets": { "type": "array", "items": { "type": "object" } },
+    "publisher": { "type": "object" },
+    "license": { "type": "string" },
+    "support": { "type": "object" },
+    "releaseChannel": { "enum": ["preview", "stable"] },
+    "knownLimitations": { "type": "array", "items": { "type": "string" } },
+    "audit": { "type": "object" }
+  }
+}

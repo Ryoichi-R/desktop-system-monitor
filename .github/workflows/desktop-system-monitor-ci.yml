@@ -1,0 +1,43 @@
+name: desktop-system-monitor
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: project/global.json
+      - run: dotnet restore project/tests/unit/Core.Tests/DesktopSystemMonitor.Core.Tests.csproj
+      - run: dotnet build project/tests/unit/Core.Tests/DesktopSystemMonitor.Core.Tests.csproj --configuration Release --no-restore
+      - run: pwsh project/scripts/test-desktop-system-monitor.ps1 -Core
+
+  windows-and-integration:
+    name: Windows + Integration + release dry-run
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: project/global.json
+      - run: dotnet restore project/DesktopSystemMonitor.slnx
+      - run: dotnet build project/DesktopSystemMonitor.slnx --configuration Release --no-restore
+      - run: dotnet format project/DesktopSystemMonitor.slnx --verify-no-changes --severity error
+      - run: pwsh project/scripts/test-desktop-system-monitor.ps1 -Windows
+      - run: pwsh project/scripts/coverage-desktop-system-monitor.ps1
+      - run: pwsh project/scripts/test-publication-contract.ps1
+      - run: pwsh project/scripts/new-desktop-system-monitor-release.ps1 -DryRun
+      - run: pwsh project/scripts/bootstrap-desktop-system-monitor-tests.ps1
+      - run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract WindowsPowerShell51
+      - run: pwsh project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract PowerShell7

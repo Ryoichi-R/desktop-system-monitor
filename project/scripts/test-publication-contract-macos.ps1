@@ -1,0 +1,145 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$BundlePath,
+    [ValidateSet('osx-arm64', 'osx-x64')][string]$Runtime = 'osx-arm64'
+)
+
+# Read-only validation for a locally produced macOS bundle. This script does
+# not install, open the GUI, sign, or modify the bundle.
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if (-not $IsMacOS) { throw 'The macOS bundle contract must be checked on macOS.' }
+
+function Invoke-Checked {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList,
+        [Parameter(Mandatory)][string]$FailureMessage
+    )
+
+    $output = @(& $FilePath @ArgumentList 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage ExitCode=$LASTEXITCODE Output=$($output -join ' ')"
+    }
+    return $output
+}
+
+function Get-PlistRawValue {
+    param(
+        [Parameter(Mandatory)][string]$PlistPath,
+        [Parameter(Mandatory)][string]$Key
+    )
+
+    $output = Invoke-Checked -FilePath '/usr/bin/plutil' `
+        -ArgumentList @('-extract', $Key, 'raw', '-o', '-', '--', $PlistPath) `
+        -FailureMessage "Info.plist key is missing: $Key."
+    return (($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+}
+
+$bundle = [IO.Path]::GetFullPath($BundlePath)
+if (-not $bundle.EndsWith('.app', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Bundle path must end in .app: $bundle"
+}
+if (-not (Test-Path -LiteralPath $bundle -PathType Container)) {
+    throw "Bundle directory does not exist: $bundle"
+}
+
+$contents = Join-Path $bundle 'Contents'
+$macos = Join-Path $contents 'MacOS'
+$plist = Join-Path $contents 'Info.plist'
+$appExecutable = Join-Path $macos 'DesktopSystemMonitor'
+$hostExecutable = Join-Path $macos 'DesktopSystemMonitor.Mac.SensorHost'
+
+foreach ($requiredPath in @($contents, $macos, $plist, $appExecutable, $hostExecutable)) {
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf) -and
+        -not (Test-Path -LiteralPath $requiredPath -PathType Container)) {
+        throw "Required bundle path is missing: $requiredPath"
+    }
+}
+
+foreach ($executable in @($appExecutable, $hostExecutable)) {
+    $item = Get-Item -LiteralPath $executable -Force
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Bundle executable must be a regular file, not a symlink: $executable"
+    }
+    Invoke-Checked -FilePath '/bin/test' -ArgumentList @('-x', $executable) `
+        -FailureMessage "Bundle executable is not executable: $executable" | Out-Null
+    $fileDescription = (Invoke-Checked -FilePath '/usr/bin/file' -ArgumentList @('-b', $executable) `
+        -FailureMessage "Unable to inspect executable: $executable" | ForEach-Object { [string]$_ }) -join ' '
+    $architecturePattern = if ($Runtime -eq 'osx-arm64') { '\barm64(?:e)?\b' } else { '\bx86_64\b' }
+    if ($fileDescription -notmatch $architecturePattern) {
+        throw "Bundle executable does not match ${Runtime}: $executable ($fileDescription)"
+    }
+}
+
+Invoke-Checked -FilePath '/usr/bin/plutil' -ArgumentList @('-lint', '--', $plist) `
+    -FailureMessage 'Info.plist is invalid.' | Out-Null
+[xml]$props = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Directory.Build.props') -Raw
+$productVersion = [string]$props.Project.PropertyGroup.Version
+foreach ($key in @('CFBundleShortVersionString', 'CFBundleVersion')) {
+    if ((Get-PlistRawValue -PlistPath $plist -Key $key) -ne $productVersion) { throw "Bundle $key does not match Directory.Build.props." }
+}
+# Run only the metadata command on a compatible host; it never opens the UI,
+# starts sampling, reads settings, or depends on a development checkout.
+$hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+$osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+# OSArchitecture is used only to decide whether this validator can launch the target;
+# the application's displayed architecture always uses ProcessArchitecture.
+$canExecute = ($Runtime -eq 'osx-arm64' -and $osArchitecture -eq 'Arm64') -or ($Runtime -eq 'osx-x64' -and $hostArchitecture -eq 'X64')
+if (-not $canExecute -and $Runtime -eq 'osx-x64' -and $osArchitecture -eq 'Arm64') {
+    # A read-only probe of the already available Rosetta runtime. Never install it.
+    & /usr/bin/arch -x86_64 /usr/bin/true 2>$null
+    $canExecute = $LASTEXITCODE -eq 0
+}
+if ($canExecute) {
+    $information = @(Invoke-Checked -FilePath $appExecutable -ArgumentList @('--version-info') -FailureMessage 'Embedded build information cannot be read.')
+    if ($information.Count -ne 6 -or $information[0] -ne 'アプリ名: Desktop System Monitor' -or $information[1] -ne "バージョン: $productVersion") { throw 'Embedded product identity does not match the bundle.' }
+    $architecture = if ($Runtime -eq 'osx-arm64') { 'ARM64' } else { 'x64' }
+    if ($information[5] -ne "実行版: macOS / $architecture") { throw 'Embedded execution identity does not match the bundle.' }
+    if ($information[4] -notmatch '^ビルド日時: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC \(\+00:00\)$') { throw 'Embedded build time must be UTC.' }
+} else {
+    Write-Host 'Metadata execution check not run: the target architecture cannot be verified on this host.'
+}
+$bundleExecutable = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleExecutable'
+if ($bundleExecutable -ne 'DesktopSystemMonitor') {
+    throw "Unexpected CFBundleExecutable: $bundleExecutable"
+}
+$bundleIdentifier = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleIdentifier'
+if ($bundleIdentifier -ne 'local.desktop-system-monitor') {
+    throw "Unexpected CFBundleIdentifier: $bundleIdentifier"
+}
+$loginAgent = Get-PlistRawValue -PlistPath $plist -Key 'LSUIElement'
+if ($loginAgent -notin @('true', '1')) {
+    throw "LSUIElement must be true: $loginAgent"
+}
+
+$resources = Join-Path $contents 'Resources'
+$iconName = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleIconFile'
+if ($iconName -ne 'DesktopSystemMonitor.icns') { throw 'Unexpected application icon name.' }
+$iconPath = Join-Path $resources $iconName
+if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) { throw 'Application icon is missing.' }
+$iconBytes = [IO.File]::ReadAllBytes($iconPath)
+if ($iconBytes.Length -le 8 -or [Text.Encoding]::ASCII.GetString($iconBytes, 0, 4) -ne 'icns') {
+    throw 'Application icon is not a valid ICNS container.'
+}
+Invoke-Checked -FilePath '/usr/bin/sips' -ArgumentList @('-g', 'pixelWidth', '-g', 'pixelHeight', $iconPath) `
+    -FailureMessage 'Application icon cannot be decoded.' | Out-Null
+foreach ($relativePath in @('THIRD-PARTY-NOTICES.md', 'dependency-inventory.json', 'licenses/Avalonia-12.1.3/LICENSE.txt', 'licenses/MicroCom.Runtime-0.11.6/LICENSE.txt', 'licenses/Tmds.DBus.Protocol-0.94.1/LICENSE.txt', 'licenses/skiasharp.nativeassets.macos-3.119.4/LICENSE.txt', 'licenses/harfbuzzsharp.nativeassets.macos-8.3.1.3/LICENSE.txt')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $resources $relativePath) -PathType Leaf)) { throw "Missing bundle notice: $relativePath" }
+}
+$inventory = @(Get-Content -LiteralPath (Join-Path $resources 'dependency-inventory.json') -Raw | ConvertFrom-Json)
+if ($inventory -match '^(DesktopSystemMonitor.Windows/|Microsoft.WindowsDesktop.App)') { throw 'Windows project/runtime leaked into macOS dependency graph.' }
+$runtimeEntries = @($inventory | Where-Object { $_ -like "Microsoft.NETCore.App.Runtime.$Runtime/*" })
+if ($runtimeEntries.Count -ne 1) { throw 'Runtime inventory must contain exactly one macOS runtime pack.' }
+$version = $runtimeEntries[0].Split('/')[1]
+foreach ($notice in @('LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $resources "licenses/dotnet-runtime-$version/$notice") -PathType Leaf)) { throw 'Runtime notice is missing.' }
+}
+
+foreach ($signedPath in @($appExecutable, $hostExecutable, $bundle)) {
+    Invoke-Checked -FilePath '/usr/bin/codesign' -ArgumentList @('--verify', '--strict', '--', $signedPath) `
+        -FailureMessage "Code-signature verification failed: $signedPath" | Out-Null
+}
+
+Write-Host "macOS publication contract passed: $bundle"

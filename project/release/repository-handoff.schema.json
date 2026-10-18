@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "projectRoot", "sourceTreeDigest", "status", "verification", "unresolvedWarnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "projectRoot": { "const": "." },
+    "sourceTreeDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "enum": ["READY_FOR_AUDIT", "BLOCKED"] },
+    "verification": { "type": "object" },
+    "unresolvedWarnings": { "type": "array", "items": { "type": "object" } }
+  }
+}

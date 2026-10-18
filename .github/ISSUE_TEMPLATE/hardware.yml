@@ -1,0 +1,28 @@
+name: Hardware compatibility
+description: Report a supported value or an expected N/A result
+title: "[Hardware]: "
+labels: [hardware]
+body:
+  - type: input
+    id: version
+    attributes: { label: Version }
+    validations: { required: true }
+  - type: dropdown
+    id: architecture
+    attributes: { label: Architecture, options: [x64, ARM64] }
+    validations: { required: true }
+  - type: textarea
+    id: hardware
+    attributes: { label: CPU, GPU, battery, and display configuration, description: Do not include serial numbers or device names. }
+    validations: { required: true }
+  - type: textarea
+    id: metrics
+    attributes: { label: Available, N/A, or incorrect metrics }
+    validations: { required: true }
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Publication check
+      options:
+        - label: This report contains no personal or secret information and may be public.
+          required: true

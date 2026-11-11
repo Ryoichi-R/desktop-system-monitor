@@ -137,12 +137,25 @@ Describe 'Windows executable version resource' {
         { Get-DesktopSystemMonitorProductVersion -ProjectRoot $temp } | Should -Throw '*numeric major.minor.patch*'
     }
 
-    It 'matches the Windows FileVersionInfo reader on the running PowerShell host' -Tag 'WindowsOnly' {
+    It 'matches fixed versions on the running PowerShell host independently of MUI strings' -Tag 'WindowsOnly' {
         $hostPath = (Get-Process -Id $PID).Path
         $expected = [Diagnostics.FileVersionInfo]::GetVersionInfo($hostPath)
         $actual = Get-DesktopSystemMonitorExecutableVersionInfo -Path $hostPath
+        $actual.FixedFileVersion | Should -BeExactly ('{0}.{1}.{2}.{3}' -f $expected.FileMajorPart, $expected.FileMinorPart, $expected.FileBuildPart, $expected.FilePrivatePart)
+        $actual.FixedProductVersion | Should -BeExactly ('{0}.{1}.{2}.{3}' -f $expected.ProductMajorPart, $expected.ProductMinorPart, $expected.ProductBuildPart, $expected.ProductPrivatePart)
+    }
+
+    It 'matches the Windows FileVersionInfo reader on a standalone executable without MUI resources' -Tag 'WindowsOnly' {
+        # FileVersionInfo merges strings from a neighboring MUI file on Windows.
+        # Copy only the EXE so both readers inspect the same embedded RT_VERSION.
+        Copy-Item -LiteralPath (Get-Process -Id $PID).Path -Destination $exe
+        $expected = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+        $actual = Get-DesktopSystemMonitorExecutableVersionInfo -Path $exe
+        $expected.ProductVersion | Should -Not -BeNullOrEmpty
+        $expected.FileVersion | Should -Not -BeNullOrEmpty
         $actual.ProductVersion | Should -BeExactly $expected.ProductVersion
         $actual.FileVersion | Should -BeExactly $expected.FileVersion
         $actual.FixedFileVersion | Should -BeExactly ('{0}.{1}.{2}.{3}' -f $expected.FileMajorPart, $expected.FileMinorPart, $expected.FileBuildPart, $expected.FilePrivatePart)
+        $actual.FixedProductVersion | Should -BeExactly ('{0}.{1}.{2}.{3}' -f $expected.ProductMajorPart, $expected.ProductMinorPart, $expected.ProductBuildPart, $expected.ProductPrivatePart)
     }
 }

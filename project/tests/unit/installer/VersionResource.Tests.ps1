@@ -148,7 +148,10 @@ Describe 'Windows executable version resource' {
     It 'matches the Windows FileVersionInfo reader on a standalone executable without MUI resources' -Tag 'WindowsOnly' {
         # FileVersionInfo merges strings from a neighboring MUI file on Windows.
         # Copy only the EXE so both readers inspect the same embedded RT_VERSION.
-        Copy-Item -LiteralPath (Get-Process -Id $PID).Path -Destination $exe
+        $hostPath = (Get-Process -Id $PID).Path
+        Copy-Item -LiteralPath $hostPath -Destination $exe
+        $hostHash = (Get-FileHash -LiteralPath $hostPath -Algorithm SHA256).Hash
+        (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash | Should -BeExactly $hostHash
         $expected = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
         $actual = Get-DesktopSystemMonitorExecutableVersionInfo -Path $exe
         $expected.ProductVersion | Should -Not -BeNullOrEmpty

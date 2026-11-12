@@ -27,10 +27,14 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     private const double ReducedWidgetWidth = 150;
     private const double WidgetHeight = 220;
     private IMacWidgetSettingsStore? _settingsStore;
+    private MacWidgetSettingsStore? _recoveryStore;
+    private MacSettingsRecovery? _recovery;
+    internal bool CanRecoverSettings => _recovery is not null;
     private MacWidgetSettings _settings = new();
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _restoringSettings;
     private bool _positionReady;
+    private Screens? _subscribedScreens;
     private PixelPoint? _automaticPosition;
     internal event EventHandler? WidgetSettingsChanged;
     internal double WidgetScale => _settings.Scale;
@@ -43,6 +47,12 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     private DispatcherTimer? _timer;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _sampling;
+    private bool _reconnecting;
+    private long _sessionEpoch;
+    private long _processWindowEpoch;
+    private long _sampledProcessWindowEpoch;
+    private MacSensorConnectionStatus? _lastConnectionStatus;
+    internal string SensorDiagnosticText { get; private set; } = "センサー: 接続待ち";
     private bool _disposed;
     private readonly IMetricSource<CpuSnapshot> _cpuSource;
     private readonly IMetricSource<MemorySnapshot> _memorySource;
@@ -79,8 +89,14 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         Closed += OnClosed;
         Opened += (_, _) =>
         {
+            if (_disposed) return;
             RestorePosition();
-            Screens.Changed += OnScreensChanged;
+            if (!ReferenceEquals(_subscribedScreens, Screens))
+            {
+                UnsubscribeScreens();
+                _subscribedScreens = Screens;
+                _subscribedScreens.Changed += OnScreensChanged;
+            }
             AttachMacLayer();
         };
         PositionChanged += (_, _) =>
@@ -97,7 +113,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     private async void OnRefreshClick(object? sender, RoutedEventArgs e)
     {
-        if (_session is not null) { await RefreshLiveAsync(); return; }
+        if (_session is not null) { await ReconnectSensorsAsync(); return; }
         try
         {
             CpuSnapshot cpu = await _cpuSource.SampleAsync(CancellationToken.None);
@@ -125,6 +141,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     internal void StartLiveMonitoring(IMacSensorSession? session = null)
     {
         _session = session ?? new MacSensorSession();
+        RefreshButton.Header = "センサーを再接続";
         if (session is null && OperatingSystem.IsMacOS()) _fullScreenDetector = new MacFullScreenDetector();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += OnTimerTick;
@@ -141,31 +158,76 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     internal async Task RefreshLiveAsync()
     {
-        if (_disposed || _sampling || _session is null || _lifetime.IsCancellationRequested) return;
+        if (_disposed || _sampling || _reconnecting || _session is null || _lifetime.IsCancellationRequested) return;
         _sampling = true;
+        long epoch = _sessionEpoch;
+        var processWindow = VisibleProcessWindow();
+        long processEpoch = _processWindowEpoch;
         try
         {
-            SensorHostMetrics metrics = await _session.SampleAsync(_lifetime.Token);
-            if (_lifetime.IsCancellationRequested) return;
-            _lastMetrics = metrics;
-            _diskDetails?.Update(metrics);
-            _processDetails?.Update(metrics.HighLoadProcesses);
-            UpdateMetric("Cpu", metrics.CpuUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.CpuUtilizationPercent.Value ?? double.NaN);
-            UpdateMetric("Memory", metrics.MemoryUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.MemoryUtilizationPercent.Value ?? double.NaN);
-            UpdateMetric("Gpu", metrics.GpuUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.GpuUtilizationPercent.Value ?? double.NaN);
-            NetworkReceiveText.Text = FormatNetwork(metrics.NetworkInterfaces, receive: true);
-            NetworkSendText.Text = FormatNetwork(metrics.NetworkInterfaces, receive: false);
-            ReducedNetworkReceiveText.Text = NetworkReceiveText.Text;
-            ReducedNetworkSendText.Text = NetworkSendText.Text;
-            UpdateNetworkPeaks(metrics.NetworkInterfaces, DateTimeOffset.UtcNow);
-            UpdateThermalDetails(metrics, DateTimeOffset.UtcNow);
-            MemoryUsageText.Text = FormatMemoryUsage(metrics);
-            ToolTip.SetTip(CpuText, FormatLivePercent("CPU", metrics.CpuUtilizationPercent));
-            StatusMenu.Header = metrics.MemoryUtilizationPercent.Status == SensorHostMetricStatus.Ok
-                ? "1秒周期で更新中（取得不可の指標は N/A）" : "SensorHost: 再接続待ち／取得不可";
+            SensorHostMetrics metrics = await _session.SampleAsync(_lifetime.Token, processWindow is not null,
+                processWindow is not null && processEpoch != _sampledProcessWindowEpoch);
+            if (_disposed || epoch != _sessionEpoch) return;
+            _sampledProcessWindowEpoch = processEpoch;
+            ApplyLiveMetrics(metrics, processWindow is not null && processEpoch == _processWindowEpoch);
         }
         catch (OperationCanceledException) { }
         finally { _sampling = false; }
+    }
+
+    internal async Task ReconnectSensorsAsync()
+    {
+        if (_disposed || _reconnecting || _session is null) return;
+        _reconnecting = true;
+        _sessionEpoch++;
+        _sampledProcessWindowEpoch = 0;
+        try
+        {
+            var reset = _session.ReconnectAsync();
+            ApplyLiveMetrics(SensorHostMetrics.Empty, updateProcesses: true);
+            await reset;
+        }
+        finally { _reconnecting = false; }
+        await RefreshLiveAsync();
+    }
+
+    private void ApplyLiveMetrics(SensorHostMetrics metrics, bool updateProcesses)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _lastMetrics = metrics;
+        _diskDetails?.Update(metrics);
+        if (updateProcesses) _processDetails?.Update(metrics.HighLoadProcesses);
+        UpdateMetric("Cpu", metrics.CpuUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.CpuUtilizationPercent.Value ?? double.NaN);
+        UpdateMetric("Memory", metrics.MemoryUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.MemoryUtilizationPercent.Value ?? double.NaN);
+        UpdateMetric("Gpu", metrics.GpuUtilizationPercent.Status == SensorHostMetricStatus.Ok, metrics.GpuUtilizationPercent.Value ?? double.NaN);
+        NetworkReceiveText.Text = ReducedNetworkReceiveText.Text = FormatNetwork(metrics.NetworkInterfaces, receive: true);
+        NetworkSendText.Text = ReducedNetworkSendText.Text = FormatNetwork(metrics.NetworkInterfaces, receive: false);
+        string? networkReason = metrics.NetworkInterfaces.Values.Any(entry => entry.ReceiveBytesPerSecond.Reason == SensorHostMetricReason.CounterRange)
+            ? "カウンターの周回を判定できません" : null;
+        ToolTip.SetTip(NetworkReceiveValue, networkReason);
+        ToolTip.SetTip(NetworkSendValue, networkReason);
+        ToolTip.SetTip(ReducedNetworkReceiveText, networkReason);
+        ToolTip.SetTip(ReducedNetworkSendText, networkReason);
+        UpdateNetworkPeaks(metrics.NetworkInterfaces, now);
+        UpdateThermalDetails(metrics, now);
+        MemoryUsageText.Text = FormatMemoryUsage(metrics);
+        ToolTip.SetTip(CpuText, FormatLivePercent("CPU", metrics.CpuUtilizationPercent));
+        var status = _session!.Status;
+        if (status != _lastConnectionStatus)
+        {
+            Program.Diagnostics.RecordSensorStatus(status);
+            _lastConnectionStatus = status;
+        }
+        StatusMenu.Header = status.State switch
+        {
+            MacSensorConnectionState.Connecting => "SensorHost: 接続中",
+            MacSensorConnectionState.Connected => "1秒周期で更新中（取得不可の指標は N/A）",
+            MacSensorConnectionState.RetryWaiting => "SensorHost: 再接続待ち／取得不可",
+            MacSensorConnectionState.RetryStopped => "再接続を停止しました。メニューから再接続できます",
+            _ => "SensorHost: 終了",
+        };
+        SensorDiagnosticText = $"{StatusMenu.Header}\nCPU温度: {TemperatureStatus(metrics.CpuTemperatureCelsius)}\nGPU温度: {TemperatureStatus(metrics.GpuTemperatureCelsius)}";
+        if (_settingsWindow is not null) _settingsWindow.SensorStatusText.Text = SensorDiagnosticText;
     }
 
     internal void SetCpuPeakWindow(int seconds)
@@ -183,7 +245,22 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         CpuTemperatureText.Text = ReducedCpuTemperatureText.Text = FormatDetail(metrics.CpuTemperatureCelsius, true);
         GpuTemperatureText.Text = ReducedGpuTemperatureText.Text = FormatDetail(metrics.GpuTemperatureCelsius, true);
         GpuPowerText.Text = ReducedGpuPowerText.Text = FormatDetail(metrics.GpuPowerWatts, false);
+        string cpuStatus = TemperatureStatus(metrics.CpuTemperatureCelsius);
+        string gpuStatus = TemperatureStatus(metrics.GpuTemperatureCelsius);
+        ToolTip.SetTip(CpuTemperatureText, cpuStatus);
+        ToolTip.SetTip(ReducedCpuTemperatureText, cpuStatus);
+        ToolTip.SetTip(GpuTemperatureText, gpuStatus);
+        ToolTip.SetTip(ReducedGpuTemperatureText, gpuStatus);
     }
+
+    private static string TemperatureStatus(SensorHostMetricValue value) => value.Reason switch
+    {
+        SensorHostMetricReason.UnsupportedModel => "未対応の機種",
+        SensorHostMetricReason.UnvalidatedOs => "このOSバージョンでは温度を未検証",
+        SensorHostMetricReason.MissingSensors => "必要な温度センサーの値が不足",
+        SensorHostMetricReason.ReadFailed => "温度センサーの読み取りに失敗",
+        _ => FormatDetail(value, temperature: true),
+    };
 
     internal static string FormatDetail(SensorHostMetricValue metric, bool temperature) =>
         metric.Status == SensorHostMetricStatus.Ok && metric.Value is double value && double.IsFinite(value)
@@ -232,7 +309,6 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     private async void OnClosed(object? sender, EventArgs e)
     {
-        Screens.Changed -= OnScreensChanged;
         Program.Diagnostics.Record(MacDiagnosticEvent.MainWindowClosed);
         _settingsWindow?.Close();
         _scaleInput?.Close();
@@ -245,8 +321,9 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     {
         if (_disposed) return;
         SaveSettings();
-        _saveTimer.Stop();
         _disposed = true;
+        UnsubscribeScreens();
+        _saveTimer.Stop();
         _timer?.Stop();
         if (_timer is not null) _timer.Tick -= OnTimerTick;
         _session?.StopPolling();
@@ -305,14 +382,37 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     internal bool HideWhenFullScreen => _settings.HideWhenFullScreen;
 
+    private ProcessDetailsWindow? VisibleProcessWindow() =>
+        _processDetails is { IsVisible: true, WindowState: not WindowState.Minimized } window ? window : null;
+
     internal void ShowProcessDetails()
     {
-        if (_processDetails is not null) { _processDetails.Activate(); return; }
-        _processDetails = new ProcessDetailsWindow();
-        _processDetails.Update(_lastMetrics.HighLoadProcesses);
-        _processDetails.Closed += (_, _) => _processDetails = null;
-        _processDetails.Show();
-        _processDetails.Activate();
+        if (_processDetails is { } existing)
+        {
+            if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+            if (!existing.IsVisible) existing.Show();
+            existing.Activate();
+            return;
+        }
+        var window = new ProcessDetailsWindow();
+        _processDetails = window;
+        _processWindowEpoch++;
+        window.PropertyChanged += OnProcessWindowVisibilityChanged;
+        window.Closed += (_, _) =>
+        {
+            window.PropertyChanged -= OnProcessWindowVisibilityChanged;
+            _processWindowEpoch++;
+            _processDetails = null;
+        };
+        window.Show();
+        window.Activate();
+    }
+
+    private void OnProcessWindowVisibilityChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property != IsVisibleProperty && e.Property != WindowStateProperty) return;
+        _processWindowEpoch++;
+        VisibleProcessWindow()?.Update(SensorHostMetricGroups.Unavailable<SensorHostProcessReading>());
     }
 
     internal void ShowMonitor()
@@ -404,9 +504,31 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(store);
         _startupRegistry = startupRegistry;
+        _settingsStore = null;
+        _recovery = null;
+        _recoveryStore = store as MacWidgetSettingsStore;
         try
         {
-            _settings = store.Load();
+            if (_recoveryStore?.Inspect() is { } result)
+            {
+                _recovery = result.Recovery;
+                if (result.Status is not (MacSettingsStatus.Normal or MacSettingsStatus.Missing))
+                {
+                    SettingsMessage = result.Status switch
+                    {
+                        MacSettingsStatus.Recoverable => "設定を読み込めません。バックアップから復旧できます",
+                        MacSettingsStatus.FutureVersion => "新しいバージョンの設定です。保存を停止しています",
+                        MacSettingsStatus.Inaccessible => "設定にアクセスできません。保存を停止しています",
+                        _ => "設定を読み込めません。元ファイルを保持し、保存を停止しています",
+                    };
+                    return;
+                }
+                _settings = result.Settings ?? new();
+            }
+            else
+            {
+                _settings = store.Load();
+            }
             string? startupWarning = null;
             if (_startupRegistry is MacStartupRegistry macStartup && Environment.ProcessPath is string currentExecutable)
             {
@@ -416,24 +538,52 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
                     startupWarning = "自動起動先を更新できません。ログイン時に自動起動を設定し直してください";
                 }
             }
-            if (_startupRegistry is not null && Environment.ProcessPath is string executable)
-                _settings = _settings with { StartAtLogin = _startupRegistry.IsEnabled(executable) };
-            Program.Diagnostics.Enabled = _settings.DiagnosticLogging;
-            _restoringSettings = true;
-            SetWidgetScale(_settings.Scale);
-            SetNetworkPeakWindow(_settings.NetworkPeakWindowSeconds);
-            SetCpuPeakWindow(_settings.CpuPeakWindowSeconds);
-            Topmost = _settings.Topmost;
+            ApplyLoadedSettings(_settings);
             _settingsStore = store;
             SettingsMessage = startupWarning ?? "設定は自動保存されます";
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException)
         {
-            // Preserve unreadable or newer settings instead of overwriting them.
             SettingsMessage = "設定を読み込めません。元ファイルを保持し、保存を停止しています";
         }
-        finally { _restoringSettings = false; }
+        finally { UpdateSettingsMenu(); }
+    }
+
+    internal void RecoverSettings()
+    {
+        if (_recoveryStore is not { } store || _recovery is not { } request) return;
+        try
+        {
+            ApplyLoadedSettings(store.Recover(request));
+            _settingsStore = store;
+            _recovery = null;
+            SettingsMessage = "バックアップから設定を復旧しました";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _recovery = store.Inspect().Recovery;
+            SettingsMessage = "設定を復旧できません。ファイルの状態を確認してください";
+        }
         UpdateSettingsMenu();
+    }
+
+    private void ApplyLoadedSettings(MacWidgetSettings settings)
+    {
+        _restoringSettings = true;
+        try
+        {
+            _settings = settings;
+            if (_startupRegistry is not null && Environment.ProcessPath is string executable)
+                _settings = _settings with { StartAtLogin = _startupRegistry.IsEnabled(executable) };
+            Program.Diagnostics.Enabled = _settings.DiagnosticLogging;
+            SetWidgetScale(_settings.Scale);
+            SetNetworkPeakWindow(_settings.NetworkPeakWindowSeconds);
+            SetCpuPeakWindow(_settings.CpuPeakWindowSeconds);
+            Topmost = _settings.Topmost;
+            ApplyLayerMode();
+            ApplyWidgetLayout();
+        }
+        finally { _restoringSettings = false; }
     }
 
     internal void ToggleTopmost()
@@ -499,6 +649,13 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         return new PixelPoint(Math.Clamp(desired.X, area.X, maxX), Math.Clamp(desired.Y, area.Y, maxY));
     }
 
+    private void UnsubscribeScreens()
+    {
+        if (_subscribedScreens is null) return;
+        _subscribedScreens.Changed -= OnScreensChanged;
+        _subscribedScreens = null;
+    }
+
     private void OnScreensChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
     {
         if (_disposed) return;
@@ -515,6 +672,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
 
     internal void RestorePosition(PixelRect workingArea, double scaling)
     {
+        bool wasRestoring = _restoringSettings;
         _restoringSettings = true;
         try
         {
@@ -527,7 +685,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
             if (_settings.X is null || _settings.Y is null)
                 _settings = _settings with { X = Position.X, Y = Position.Y };
         }
-        finally { _restoringSettings = false; }
+        finally { _restoringSettings = wasRestoring; }
     }
 
     private void SaveSettings()

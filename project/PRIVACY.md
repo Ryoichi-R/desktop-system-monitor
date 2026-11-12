@@ -22,17 +22,22 @@ their extraction directory after disabling Start with Windows.
 ## macOS local preview
 
 Settings: `~/Library/Application Support/DesktopSystemMonitor/mac-widget.json`.
+The same directory holds one previous valid copy (`mac-widget.json.bak`) and,
+after explicit recovery of damaged settings, the preserved original
+(`mac-widget.json.corrupt-*`). Preserved originals remain until removed by the
+user. The single-instance lock file contains no setting or telemetry data.
 Diagnostic logs: `~/Library/Logs/DesktopSystemMonitor/mac-monitor.log` and up to
 four rotated files. Logging is disabled by default; enable it from the menu-bar
 or context menu. A file is rotated before the next record would exceed 1 MB.
-Records contain UTC time, a fixed event category, exception type and HRESULT
-only. Exception messages and stack traces are not stored. Process names/PIDs,
+Records contain UTC time, a fixed event category, and either exception type and
+HRESULT or the sensor connection state, fixed reason and attempt count. Exception messages and stack traces are not stored. Process names/PIDs,
 window titles, screen identifiers, paths, SMC keys, channels and metric values
 are not written to this diagnostic log. Native fatal signals or forced kill
 may prevent a final record; a missing log is not proof of a clean exit.
 
 Process names/PIDs and CPU/I/O values are displayed locally in the optional
-process window. CoreGraphics window bounds/owner IDs are read only for
+process window. The SensorHost enumerates processes while that window requests
+samples. CoreGraphics window bounds/owner IDs are read only for
 full-screen visibility decisions, not logged or exported. No window titles
 or window images are read by the detector. No screen-recording permission is
 requested. Restricted/missing metadata restores the widget.

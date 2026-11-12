@@ -102,12 +102,12 @@ internal sealed class NativeMetricCollector : IDisposable
     private readonly NetworkMetricCollector _network = new(NativeNetworkReader.Read);
     private readonly GpuMetricCollector _gpu = new(new NativeGpuReader());
 
-    internal SensorHostMetrics Sample()
+    internal SensorHostMetrics Sample(bool includeHighLoadProcesses = false, bool resetHighLoadProcesses = false)
     {
         var metrics = _basic.Sample();
         long now = Stopwatch.GetTimestamp();
         var wall = DateTimeOffset.UtcNow;
-        return _thermal.Sample(_disk.Sample(metrics, now, wall) with { HighLoadProcesses = _processes.Sample(now, wall), NetworkInterfaces = _network.Sample(now, wall), GpuUtilizationPercent = _gpu.Sample(now, wall) }, now, wall);
+        return _thermal.Sample(_disk.Sample(metrics, now, wall) with { HighLoadProcesses = _processes.Sample(now, wall, includeHighLoadProcesses, resetHighLoadProcesses), NetworkInterfaces = _network.Sample(now, wall), GpuUtilizationPercent = _gpu.Sample(now, wall) }, now, wall);
     }
 
     public void Dispose() { _gpu.Dispose(); _thermal.Dispose(); }

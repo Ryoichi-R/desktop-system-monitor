@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Diagnostics;
 using DesktopSystemMonitor.Core.Platform;
 using Xunit;
@@ -56,7 +58,16 @@ public sealed class ThermalMetricTests
     public async Task Calibrated_Mac_Reads_Temperatures_And_Gpu_Power()
     {
         using var smc = new SmcTemperatureReader();
-        if (!smc.Supported) return; // Other OS/model profiles intentionally remain unavailable.
+        if (smc.GetProfile(out var reason) is null)
+        {
+            Assert.NotEqual(SensorHostMetricReason.None, reason);
+            Assert.NotEqual("1", Environment.GetEnvironmentVariable("DSM_REQUIRE_TEMPERATURE_PROFILE"));
+            using var unavailable = new ThermalMetricCollector(smc, new GpuEnergyReader());
+            var unavailableSample = unavailable.Sample(SensorHostMetrics.Empty, Stopwatch.GetTimestamp(), DateTimeOffset.UtcNow);
+            Assert.Equal(reason, unavailableSample.CpuTemperatureCelsius.Reason);
+            Assert.Equal(reason, unavailableSample.GpuTemperatureCelsius.Reason);
+            return;
+        }
         using var collector = new ThermalMetricCollector(smc, new GpuEnergyReader());
         SensorHostMetrics sample = SensorHostMetrics.Empty;
         for (int i = 0; i < 3; i++)
@@ -81,6 +92,8 @@ public sealed class ThermalMetricTests
     private sealed class FakeTemperature : ITemperatureReader
     {
         public bool Supported { get; set; } = true;
+        public TemperatureSensorProfile? GetProfile(out SensorHostMetricReason reason) =>
+            TemperatureProfile.Select(TemperatureProfile.Model, Supported ? TemperatureProfile.OsVersion : "unverified", out reason);
         internal HashSet<string> Missing = new();
         public double? Read(string key) => Missing.Contains(key) ? double.NaN : 50;
         public void Dispose() { }

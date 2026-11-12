@@ -7,7 +7,7 @@ internal static class Program
     internal static Func<Stream> StandardInputFactory { get; set; } = Console.OpenStandardInput;
     internal static Func<Stream> StandardOutputFactory { get; set; } = Console.OpenStandardOutput;
 
-    internal static Func<Func<SensorHostMetrics>?> SamplerFactory { get; set; } = () =>
+    internal static Func<Func<bool, bool, SensorHostMetrics>?> SamplerFactory { get; set; } = () =>
         OperatingSystem.IsMacOS() ? new NativeMetricCollector().Sample : null;
 
     public static Task<int> Main() => RunAsync(
@@ -39,7 +39,7 @@ internal static class Program
 
 internal static class SensorHostServer
 {
-    internal static async Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken, Func<SensorHostMetrics>? sample = null)
+    internal static async Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken, Func<bool, bool, SensorHostMetrics>? sample = null)
     {
         try
         {
@@ -56,7 +56,7 @@ internal static class SensorHostServer
                     : SensorHostProtocol.Unavailable(request.Sequence, request.HostGeneration, "unsupported-request");
                 if (request.Kind == "sample" && sample is not null)
                 {
-                    SensorHostMetrics metrics = sample();
+                    SensorHostMetrics metrics = sample(request.IncludeHighLoadProcesses, request.ResetHighLoadProcesses);
                     response = response with { Status = "ok", ErrorCode = null, Metrics = metrics, GeneratedAtMonotonicTicks = System.Diagnostics.Stopwatch.GetTimestamp() };
                 }
                 await SensorHostProtocol.WriteAsync(output, response, cancellationToken).ConfigureAwait(false);

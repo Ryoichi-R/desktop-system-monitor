@@ -1,4 +1,5 @@
 using Avalonia;
+using DesktopSystemMonitor.Mac;
 
 namespace DesktopSystemMonitor.App;
 
@@ -14,6 +15,21 @@ internal static class Program
             Console.WriteLine(BuildInformation.Current.CopyText);
             return 0;
         }
+        if (!OperatingSystem.IsMacOS()) return RunApplication(args);
+        try
+        {
+            using var guard = MacSingleInstanceGuard.TryAcquire();
+            return guard is null ? 0 : RunApplication(args);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            Console.Error.WriteLine("Desktop System Monitor: 単一起動の確認に失敗しました。");
+            return 2;
+        }
+    }
+
+    private static int RunApplication(string[] args)
+    {
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         try { return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args); }
         catch (Exception ex)

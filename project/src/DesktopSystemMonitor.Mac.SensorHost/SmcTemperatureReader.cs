@@ -2,21 +2,33 @@ using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text;
 using DesktopSystemMonitor.Mac.SensorHost.Interop;
+using DesktopSystemMonitor.Core.Platform;
 
 namespace DesktopSystemMonitor.Mac.SensorHost;
 
 internal interface ITemperatureReader : IDisposable
 {
-    bool Supported { get; }
+    TemperatureSensorProfile? GetProfile(out SensorHostMetricReason reason);
     double? Read(string key);
 }
 
 internal sealed unsafe class SmcTemperatureReader : ITemperatureReader
 {
     private uint _connection;
-    private bool? _supported;
-    public bool Supported => _supported ??= SystemString("hw.model") == TemperatureProfile.Model
-        && SystemString("kern.osproductversion") == TemperatureProfile.OsVersion;
+    private TemperatureSensorProfile? _profile;
+    private SensorHostMetricReason _reason;
+    private bool _identityRead;
+
+    public TemperatureSensorProfile? GetProfile(out SensorHostMetricReason reason)
+    {
+        if (!_identityRead)
+        {
+            _profile = TemperatureProfile.Select(SystemString("hw.model"), SystemString("kern.osproductversion"), out _reason);
+            _identityRead = true;
+        }
+        reason = _reason;
+        return _profile;
+    }
 
     private static string SystemString(string name)
     {
@@ -28,7 +40,7 @@ internal sealed unsafe class SmcTemperatureReader : ITemperatureReader
 
     public double? Read(string key)
     {
-        if (!Supported) return null;
+        if (GetProfile(out _) is null) return null;
         if (_connection == 0)
         {
             nint matching = ExtendedNative.Matching("AppleSMC");

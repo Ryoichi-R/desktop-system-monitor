@@ -34,6 +34,8 @@ internal sealed class MacSettingsWindow : Window
 
     private readonly AvaloniaMainWindow _monitor;
     private bool _refreshing;
+    internal Button RecoverButton { get; } = new() { Content = "バックアップから復旧", HorizontalAlignment = HorizontalAlignment.Left };
+    internal TextBlock SensorStatusText { get; } = new() { TextWrapping = TextWrapping.Wrap };
     internal NumericUpDown ScaleInput { get; } = Number(50, 150);
     internal NumericUpDown CpuPeakInput { get; } = Number(10, 60);
     internal NumericUpDown NetworkPeakInput { get; } = Number(10, 60);
@@ -75,12 +77,13 @@ internal sealed class MacSettingsWindow : Window
                 Category("計測", Field("CPU最大値の集計期間（秒）", CpuPeakInput),
                     Field("ネットワーク最大値の集計期間（秒）", NetworkPeakInput),
                     Hint("直近10〜60秒の最大値を表示します。計測は1秒ごとに更新されます。")),
-                Category("診断", DiagnosticsInput, Hint("問題の調査が必要なときに有効にしてください。")),
+                Category("診断", DiagnosticsInput, SensorStatusText, RecoverButton, Hint("問題の調査が必要なときに有効にしてください。")),
                 Category("バージョン情報", VersionInformationText, CopyVersionInformationButton, CopyVersionInformationStatus)
             }
         };
         Content = new DockPanel { Margin = new Thickness(20), Children = { footer, tabs } };
         CopyVersionInformationButton.Click += CopyVersionInformation_Click;
+        RecoverButton.Click += (_, _) => _monitor.RecoverSettings();
         Refresh();
         ScaleInput.ValueChanged += (_, _) => Change(() => { if (ScaleInput.Value is decimal value) _monitor.SetWidgetScale((double)value / 100); });
         CpuPeakInput.ValueChanged += (_, _) => Change(() => { if (CpuPeakInput.Value is decimal value) _monitor.SetCpuPeakWindow((int)value); });
@@ -130,6 +133,8 @@ internal sealed class MacSettingsWindow : Window
             CpuPeakInput.Value = _monitor.CpuPeakWindowSeconds;
             NetworkPeakInput.Value = _monitor.NetworkPeakWindowSeconds;
             StatusText.Text = _monitor.SettingsMessage;
+            SensorStatusText.Text = _monitor.SensorDiagnosticText;
+            RecoverButton.IsVisible = _monitor.CanRecoverSettings;
         }
         finally { _refreshing = false; }
     }

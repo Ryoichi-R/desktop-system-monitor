@@ -1,6 +1,6 @@
 # Desktop System Monitor
 
-> Apple Silicon向けmacOSローカル評価版の実装も含みます。MacではBATを使わず、[macOSの起動・操作・制限](project/docs/usage/macos.md)を参照してください。Windows WPF版は維持しています。最終実機受入とWindows Avalonia置換は未完了です。
+> Apple Silicon向けmacOSローカル評価版の実装も含みます。MacではBATを使わず、[macOSの起動・操作・制限](project/docs/usage/macos.md)を参照してください。0.3.0のMac候補はセンサーの手動再接続と設定のバックアップ復旧に対応します。Windows WPF版は維持しています。最終実機受入とWindows Avalonia置換は未完了です。
 
 Windows向けのDesktop System Monitorです。一般利用者は、このREADMEの隣にある
 `ここから開始 - Desktop System Monitorを導入・更新.bat` を実行してください。

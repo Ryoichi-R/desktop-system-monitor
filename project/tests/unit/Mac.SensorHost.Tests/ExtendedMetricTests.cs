@@ -9,7 +9,7 @@ public sealed class ExtendedMetricTests
 {
     private static readonly DateTimeOffset Epoch = DateTimeOffset.UnixEpoch;
     private static long Tick(int second) => (second + 1L) * Stopwatch.Frequency;
-    private static NetworkCounter Counter(uint received = 0, uint sent = 0) => new(1, "en0", 1, 1_000_000_000, received, sent);
+    private static NetworkCounter Counter(uint received = 0, uint sent = 0) => new(1, "en0", 1, 1_000_000_000, received, sent, Is32Bit: true);
 
     [Fact]
     public void Network_Warms_Up_Calculates_Rates_And_Excludes_Virtual_And_Down_Interfaces()
@@ -60,6 +60,39 @@ public sealed class ExtendedMetricTests
         Assert.Equal(SensorHostMetricStatus.Unavailable, new NetworkMetricCollector(() => [data, data]).Sample(Tick(0), Epoch).Status);
     }
 
+    [Theory]
+    [InlineData(1_000_000_000UL)]
+    [InlineData(10_000_000_000UL)]
+    [InlineData(25_000_000_000UL)]
+    public void Network_Uses_64Bit_Deltas_At_Native_Poll_Interval(ulong baud)
+    {
+        var data = Counter() with { Is32Bit = false, BaudRate = baud, Received = uint.MaxValue, Sent = uint.MaxValue };
+        var collector = new NetworkMetricCollector(() => [data]);
+        collector.Sample(Tick(0), Epoch);
+        data = data with { Received = data.Received + baud / 8, Sent = data.Sent + baud / 16 };
+        var values = Assert.Single(collector.Sample(Tick(1), Epoch.AddSeconds(1)).Values);
+        Assert.Equal(baud / 8d, values.ReceiveBytesPerSecond.Value);
+        Assert.Equal(baud / 16d, values.SendBytesPerSecond.Value);
+        data = data with { Received = 128, Sent = 128 };
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, Assert.Single(collector.Sample(Tick(2), Epoch.AddSeconds(2)).Values).ReceiveBytesPerSecond.Status);
+        data = data with { Received = ulong.MaxValue };
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, Assert.Single(collector.Sample(Tick(3), Epoch.AddSeconds(3)).Values).ReceiveBytesPerSecond.Status);
+    }
+
+    [Theory]
+    [InlineData(0UL)]
+    [InlineData(25_000_000_000UL)]
+    public void Network_Explains_Ambiguous_32Bit_Counters(ulong baud)
+    {
+        var data = Counter() with { BaudRate = baud };
+        var collector = new NetworkMetricCollector(() => [data]);
+        collector.Sample(Tick(0), Epoch);
+        data = data with { Received = 1024 };
+        var value = Assert.Single(collector.Sample(Tick(1), Epoch.AddSeconds(1)).Values).ReceiveBytesPerSecond;
+        Assert.Equal(SensorHostMetricStatus.Unavailable, value.Status);
+        Assert.Equal(SensorHostMetricReason.CounterRange, value.Reason);
+    }
+
     private static byte[] Buffer()
     {
         byte[] data = new byte[160];
@@ -75,7 +108,7 @@ public sealed class ExtendedMetricTests
     public void Network_Parser_Bounds_Checks_Every_Message()
     {
         var data = Buffer();
-        Assert.Equal(256U, Assert.Single(NativeNetworkReader.Parse(data, _ => "en0")).Received);
+        Assert.Equal(4294967552UL, Assert.Single(NativeNetworkReader.Parse(data, _ => "en0")).Received);
         for (int length = 1; length < 160; length++)
             Assert.Throws<InvalidDataException>(() => NativeNetworkReader.Parse(data.AsSpan(0, length), _ => "en0"));
         data[0] = 0; data[1] = 0;

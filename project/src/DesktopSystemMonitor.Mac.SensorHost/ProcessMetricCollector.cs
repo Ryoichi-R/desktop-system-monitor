@@ -15,8 +15,14 @@ internal sealed class ProcessMetricCollector(Func<ProcessCounters> read)
     private long _tick;
     private DateTimeOffset _wall;
 
-    internal SensorHostMetricGroup<SensorHostProcessReading> Sample(long now, DateTimeOffset wall)
+    internal SensorHostMetricGroup<SensorHostProcessReading> Sample(long now, DateTimeOffset wall, bool include = true, bool reset = false)
     {
+        if (!include || reset)
+        {
+            _previous.Clear();
+            _tick = 0;
+        }
+        if (!include) return SensorHostMetricGroups.Unavailable<SensorHostProcessReading>();
         try
         {
             var sample = read();

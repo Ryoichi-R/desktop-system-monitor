@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using DesktopSystemMonitor.App;
 using DesktopSystemMonitor.Core.Platform;
 using DesktopSystemMonitor.Core.Settings;
@@ -12,11 +13,13 @@ internal sealed class MemorySettingsStore : IMacWidgetSettingsStore
 {
     internal MacWidgetSettings Settings = new();
     internal bool FailLoad, FailSave;
+    internal int Saves;
     public MacWidgetSettings Load() => FailLoad ? throw new InvalidDataException("test") : Settings;
     public void Save(MacWidgetSettings settings)
     {
         if (FailSave) throw new IOException("test");
         Settings = settings;
+        Saves++;
     }
 }
 
@@ -145,7 +148,7 @@ public sealed class MacWidgetSettingsTests
             Assert.Equal(new MacWidgetSettings(), store.Load());
             store.Save(new() { Scale = 0.1, DisplayMode = (WidgetDisplayMode)999 });
             Assert.Equal(new MacWidgetSettings(), store.Load());
-            Assert.Single(Directory.GetFiles(directory));
+            Assert.Equal(new[] { path, path + ".bak" }, Directory.GetFiles(directory).Order(StringComparer.Ordinal));
             File.WriteAllText(path, "{\"Version\":2}");
             Assert.Throws<InvalidDataException>(() => store.Load());
             Assert.Equal("{\"Version\":2}", File.ReadAllText(path));
@@ -155,6 +158,101 @@ public sealed class MacWidgetSettingsTests
             Assert.Throws<InvalidDataException>(() => store.Load());
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Store_Preserves_The_Backup_Until_Explicit_Recovery(bool corrupt)
+    {
+        string root = Directory.CreateTempSubdirectory("dsm-settings-").FullName;
+        string path = Path.Combine(root, "mac-widget.json");
+        string backup = path + ".bak";
+        const string original = "{\"Version\":1,\"Scale\":0.75,\"futureOption\":true}";
+        try
+        {
+            File.WriteAllText(path, original);
+            var store = new MacWidgetSettingsStore(path);
+            store.Save(store.Load() with { Scale = 1.5 });
+            Assert.Contains("futureOption", File.ReadAllText(path));
+            Assert.Equal(original, File.ReadAllText(backup));
+
+            if (corrupt) File.WriteAllText(path, "broken settings");
+            else File.Delete(path);
+            var result = store.Inspect();
+            Assert.Equal(MacSettingsStatus.Recoverable, result.Status);
+            Assert.Throws<IOException>(() => store.Save(new()));
+            Assert.Equal(original, File.ReadAllText(backup));
+            if (corrupt) Assert.Equal("broken settings", File.ReadAllText(path));
+            else Assert.False(File.Exists(path));
+
+            Assert.Equal(0.75, store.Recover(result.Recovery!).Scale);
+            Assert.Equal(original, File.ReadAllText(path));
+            Assert.Equal(original, File.ReadAllText(backup));
+            var archives = Directory.GetFiles(root, "*.corrupt-*");
+            if (corrupt) Assert.Equal("broken settings", File.ReadAllText(Assert.Single(archives)));
+            else Assert.Empty(archives);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Store_Rejects_Changed_Backup_And_Future_Main_And_Preserves_Main_On_Backup_Failure()
+    {
+        string root = Directory.CreateTempSubdirectory("dsm-settings-").FullName;
+        string path = Path.Combine(root, "mac-widget.json");
+        string backup = path + ".bak";
+        try
+        {
+            var store = new MacWidgetSettingsStore(path);
+            store.Save(new() { Scale = 0.75 });
+            Directory.CreateDirectory(backup);
+            Assert.ThrowsAny<IOException>(() => store.Save(new() { Scale = 1.25 }));
+            Assert.Equal(0.75, store.Load().Scale);
+            Directory.Delete(backup);
+            store.Save(new() { Scale = 1.25 });
+            File.WriteAllText(path, "broken");
+            var request = store.Inspect().Recovery!;
+            File.WriteAllText(backup, "{\"Version\":1,\"Scale\":1.5}");
+            Assert.Throws<IOException>(() => store.Recover(request));
+            Assert.Equal("broken", File.ReadAllText(path));
+
+            const string future = "{\"Version\":99,\"Scale\":\"new format\"}";
+            File.WriteAllText(path, future);
+            Assert.Equal(MacSettingsStatus.FutureVersion, store.Inspect().Status);
+            Assert.Throws<IOException>(() => store.Save(new()));
+            Assert.Throws<IOException>(() => store.Recover(request));
+            Assert.Equal(future, File.ReadAllText(path));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [AvaloniaFact]
+    public async Task Settings_Window_Recovers_Only_On_Explicit_Action()
+    {
+        string root = Directory.CreateTempSubdirectory("dsm-settings-").FullName;
+        string path = Path.Combine(root, "mac-widget.json");
+        try
+        {
+            File.WriteAllText(path + ".bak", "{\"Version\":1,\"Scale\":0.75,\"StartAtLogin\":true}");
+            var registry = new FakeStartupRegistry();
+            await using var window = new AvaloniaMainWindow();
+            window.EnableSettings(new MacWidgetSettingsStore(path), registry);
+            window.SetWidgetScale(1.5);
+            Assert.False(File.Exists(path));
+            window.ShowSettings();
+            Assert.True(window.SettingsWindow!.RecoverButton.IsVisible);
+            window.SettingsWindow.Close();
+            Assert.False(File.Exists(path));
+            window.ShowSettings();
+            window.SettingsWindow!.RecoverButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(0.75, window.WidgetScale);
+            Assert.False(window.StartAtLogin);
+            Assert.Equal(0, registry.EnableCalls);
+            Assert.False(window.SettingsWindow.RecoverButton.IsVisible);
+            window.SettingsWindow.Close();
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [AvaloniaFact]

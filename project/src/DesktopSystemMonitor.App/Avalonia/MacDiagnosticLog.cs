@@ -1,3 +1,5 @@
+using DesktopSystemMonitor.Mac;
+
 namespace DesktopSystemMonitor.App;
 
 internal enum MacDiagnosticEvent { Started, Stopped, MainWindowClosed, UnhandledException, LoggingEnabled, LoggingDisabled, FullScreenHidden, FullScreenRestored }
@@ -10,6 +12,15 @@ internal sealed class MacDiagnosticLog(string directory, long maxBytes = 1_000_0
 
     internal void Record(MacDiagnosticEvent category, Exception? error = null)
     {
+        string details = error is null ? "" : $" exception={error.GetType().Name} hresult=0x{error.HResult:X8}";
+        Write($"category={category}{details}");
+    }
+
+    internal void RecordSensorStatus(MacSensorConnectionStatus status) =>
+        Write($"category=SensorConnection state={status.State} reason={status.Failure} attempts={status.Attempts}");
+
+    private void Write(string entry)
+    {
         if (!Enabled) return;
         lock (_gate)
         {
@@ -17,8 +28,7 @@ internal sealed class MacDiagnosticLog(string directory, long maxBytes = 1_000_0
             {
                 Directory.CreateDirectory(directory);
                 string path = Path.Combine(directory, "mac-monitor.log");
-                string line = $"{DateTimeOffset.UtcNow:O} category={category}"
-                    + (error is null ? "" : $" exception={error.GetType().Name} hresult=0x{error.HResult:X8}") + Environment.NewLine;
+                string line = $"{DateTimeOffset.UtcNow:O} {entry}{Environment.NewLine}";
                 if (File.Exists(path) && new FileInfo(path).Length + System.Text.Encoding.UTF8.GetByteCount(line) > maxBytes)
                 {
                     for (int i = 3; i >= 0; i--)

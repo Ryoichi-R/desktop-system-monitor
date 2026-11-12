@@ -14,13 +14,21 @@ internal sealed class ThermalMetricCollector(ITemperatureReader temperature, IGp
         SensorHostMetricValue cpu = SensorHostMetricValue.Unavailable(), gpu = SensorHostMetricValue.Unavailable();
         try
         {
-            if (temperature.Supported)
+            var profile = temperature.GetProfile(out var reason);
+            if (profile is null)
             {
-                cpu = ReadTemperature(TemperatureProfile.Cpu, now);
-                gpu = ReadTemperature(TemperatureProfile.Gpu, now);
+                cpu = gpu = SensorHostMetricValue.Unavailable(reason);
+            }
+            else
+            {
+                cpu = ReadTemperature(profile.CpuKeys, now);
+                gpu = ReadTemperature(profile.GpuKeys, now);
             }
         }
-        catch (Exception ex) when (IsRecoverable(ex)) { }
+        catch (Exception ex) when (IsRecoverable(ex))
+        {
+            cpu = gpu = SensorHostMetricValue.Unavailable(SensorHostMetricReason.ReadFailed);
+        }
         var power = SensorHostMetricValue.Unavailable();
         try
         {
@@ -44,7 +52,7 @@ internal sealed class ThermalMetricCollector(ITemperatureReader temperature, IGp
 
     private SensorHostMetricValue ReadTemperature(string[] keys, long now)
     {
-        int valid = 0;
+        int valid = 0, failures = 0;
         double maximum = double.NegativeInfinity;
         foreach (string key in keys)
         {
@@ -53,10 +61,12 @@ internal sealed class ThermalMetricCollector(ITemperatureReader temperature, IGp
                 double? value = temperature.Read(key);
                 if (value is >= 5 and <= 120 && double.IsFinite(value.Value)) { valid++; maximum = Math.Max(maximum, value.Value); }
             }
-            catch (Exception ex) when (IsRecoverable(ex)) { }
+            catch (Exception ex) when (IsRecoverable(ex)) { failures++; }
         }
         // More than 10% missing/invalid requires recalibration, not a potentially misleading maximum.
-        return valid * 10 >= keys.Length * 9 ? SensorHostMetricValue.Ok(maximum, now) : SensorHostMetricValue.Unavailable();
+        return valid * 10 >= keys.Length * 9
+            ? SensorHostMetricValue.Ok(maximum, now)
+            : SensorHostMetricValue.Unavailable(failures > 0 ? SensorHostMetricReason.ReadFailed : SensorHostMetricReason.MissingSensors);
     }
 
     private static bool IsRecoverable(Exception ex) => ex is IOException or InvalidDataException or InvalidOperationException

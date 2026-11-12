@@ -47,6 +47,28 @@ public sealed class AvaloniaMainWindowMenuTests
     }
 
     [AvaloniaFact]
+    public async Task Minimized_Process_Details_Stop_Requests_And_Restore_Starts_A_New_Baseline()
+    {
+        var session = new CountingSession();
+        await using var window = new AvaloniaMainWindow();
+        window.StartLiveMonitoring(session);
+        window.ShowProcessDetails();
+        var process = Field<ProcessDetailsWindow>(window, "_processDetails")!;
+        await window.RefreshLiveAsync();
+        Assert.Equal((true, true), session.LastProcessRequest);
+        await window.RefreshLiveAsync();
+        Assert.Equal((true, false), session.LastProcessRequest);
+        process.WindowState = WindowState.Minimized;
+        await window.RefreshLiveAsync();
+        Assert.Equal((false, false), session.LastProcessRequest);
+        window.ShowProcessDetails();
+        Assert.Equal(WindowState.Normal, process.WindowState);
+        await window.RefreshLiveAsync();
+        Assert.Equal((true, true), session.LastProcessRequest);
+        process.Close();
+    }
+
+    [AvaloniaFact]
     public async Task Context_Menu_Opens_Detail_Windows_And_Reuses_Them()
     {
         await using var window = new AvaloniaMainWindow();
@@ -253,9 +275,13 @@ public sealed class AvaloniaMainWindowMenuTests
 
     private sealed class CountingSession : IMacSensorSession
     {
+        public MacSensorConnectionStatus Status { get; } = new(MacSensorConnectionState.Connected);
+        public ValueTask ReconnectAsync() => ValueTask.CompletedTask;
         internal int Calls;
-        public ValueTask<SensorHostMetrics> SampleAsync(CancellationToken cancellationToken)
+        internal (bool Include, bool Reset) LastProcessRequest;
+        public ValueTask<SensorHostMetrics> SampleAsync(CancellationToken cancellationToken, bool includeHighLoadProcesses = false, bool resetHighLoadProcesses = false)
         {
+            LastProcessRequest = (includeHighLoadProcesses, resetHighLoadProcesses);
             Interlocked.Increment(ref Calls);
             return ValueTask.FromResult(SensorHostMetrics.Empty);
         }

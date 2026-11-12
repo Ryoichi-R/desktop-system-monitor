@@ -1,18 +1,15 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using DesktopSystemMonitor.Core.Platform;
-using DesktopSystemMonitor.Core.Sampling;
 using DesktopSystemMonitor.Mac.SensorHost.Interop;
 
 namespace DesktopSystemMonitor.Mac.SensorHost;
 
-internal sealed record NetworkCounter(uint Index, string Name, uint Flags, ulong BaudRate, uint Received, uint Sent);
+internal sealed record NetworkCounter(uint Index, string Name, uint Flags, ulong BaudRate, ulong Received, ulong Sent, bool Is32Bit = false);
 
 internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
 {
-    private sealed record Baseline(NetworkCounter Counter, RateCalculator Receive, RateCalculator Send);
-    private readonly Dictionary<uint, Baseline> _baselines = new();
+    private readonly Dictionary<uint, NetworkCounter> _baselines = new();
     private long _previousTime;
     private DateTimeOffset _previousWall;
 
@@ -33,28 +30,30 @@ internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
             var result = new List<SensorHostNetworkInterfaceReading>();
             foreach (var counter in active)
             {
-                // This tested Mac exposes byte counters rounded to 256 bytes and truncated to 32 bits.
                 double maxBytesPerSecond = Math.Max(counter.BaudRate / 8d, 1_250_000_000d);
-                bool reset = longGap || seconds * maxBytesPerSecond >= 4294967296d / 2
-                    || !_baselines.TryGetValue(counter.Index, out var old) || old.Counter.Name != counter.Name
-                    || old.Counter.Flags != counter.Flags || old.Counter.BaudRate != counter.BaudRate;
-                if (!reset)
+                bool ambiguous = counter.Is32Bit && (counter.BaudRate == 0 || seconds * maxBytesPerSecond >= (1UL << 31));
+                var receive = SensorHostMetricValue.WarmingUp();
+                var send = SensorHostMetricValue.WarmingUp();
+                if (ambiguous && !longGap)
                 {
-                    old = _baselines[counter.Index];
-                    reset = InvalidDelta(old.Counter.Received, counter.Received, seconds, maxBytesPerSecond)
-                        || InvalidDelta(old.Counter.Sent, counter.Sent, seconds, maxBytesPerSecond);
+                    receive = send = SensorHostMetricValue.Unavailable(SensorHostMetricReason.CounterRange);
                 }
-                if (reset) _baselines[counter.Index] = new(counter, new(1L << 32), new(1L << 32));
-                var baseline = _baselines[counter.Index];
-                var receive = baseline.Receive.Update(counter.Received, now, Stopwatch.Frequency);
-                var send = baseline.Send.Update(counter.Sent, now, Stopwatch.Frequency);
-                _baselines[counter.Index] = baseline with { Counter = counter };
+                else if (!longGap && _baselines.TryGetValue(counter.Index, out var previous)
+                    && previous.Name == counter.Name && previous.Flags == counter.Flags
+                    && previous.BaudRate == counter.BaudRate && previous.Is32Bit == counter.Is32Bit
+                    && TryDelta(previous.Received, counter.Received, counter.Is32Bit, seconds * maxBytesPerSecond, out ulong received)
+                    && TryDelta(previous.Sent, counter.Sent, counter.Is32Bit, seconds * maxBytesPerSecond, out ulong sent))
+                {
+                    receive = SensorHostMetricValue.Ok(received / seconds, now);
+                    send = SensorHostMetricValue.Ok(sent / seconds, now);
+                }
+                _baselines[counter.Index] = counter;
                 result.Add(new()
                 {
                     InterfaceIndex = counter.Index,
                     Name = counter.Name,
-                    ReceiveBytesPerSecond = receive.IsWarmingUp ? SensorHostMetricValue.WarmingUp() : SensorHostMetricValue.Ok(receive.RatePerSecond, now),
-                    SendBytesPerSecond = send.IsWarmingUp ? SensorHostMetricValue.WarmingUp() : SensorHostMetricValue.Ok(send.RatePerSecond, now),
+                    ReceiveBytesPerSecond = receive,
+                    SendBytesPerSecond = send,
                 });
             }
             return SensorHostMetricGroups.Ok(result.ToArray(), now);
@@ -62,14 +61,20 @@ internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
         catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or OverflowException)
         {
             _baselines.Clear();
+            _previousTime = 0;
+            _previousWall = default;
             return SensorHostMetricGroups.Unavailable<SensorHostNetworkInterfaceReading>();
         }
     }
 
-    private static bool InvalidDelta(uint previous, uint current, double seconds, double limit)
+    private static bool TryDelta(ulong previous, ulong current, bool is32Bit, double limit, out ulong delta)
     {
-        if (current < previous && !(previous >= 0xC0000000 && current < 0x40000000)) return true;
-        return unchecked(current - previous) > limit * seconds + 256;
+        delta = 0;
+        if (is32Bit && (previous > uint.MaxValue || current > uint.MaxValue)) return false;
+        if (current >= previous) delta = current - previous;
+        else if (is32Bit && previous >= 0xC0000000 && current < 0x40000000) delta = (1UL << 32) - previous + current;
+        else return false;
+        return delta <= long.MaxValue && delta <= limit + 256;
     }
 }
 
@@ -103,8 +108,8 @@ internal static unsafe class NativeNetworkReader
                 if (index == 0 || result.Count >= SensorHostProtocol.MaxNetworkInterfaces) throw new InvalidDataException("Invalid interface index/count.");
                 result.Add(new(index, name(index), BinaryPrimitives.ReadUInt32LittleEndian(buffer[8..]),
                     BinaryPrimitives.ReadUInt64LittleEndian(buffer[48..]),
-                    unchecked((uint)BinaryPrimitives.ReadUInt64LittleEndian(buffer[96..])),
-                    unchecked((uint)BinaryPrimitives.ReadUInt64LittleEndian(buffer[104..]))));
+                    BinaryPrimitives.ReadUInt64LittleEndian(buffer[96..]),
+                    BinaryPrimitives.ReadUInt64LittleEndian(buffer[104..])));
             }
             buffer = buffer[length..];
         }

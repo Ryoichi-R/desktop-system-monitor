@@ -12,6 +12,26 @@ public sealed class ProcessMetricTests
     private static ProcessCounter Counter(int pid = 1, ulong cpu = 0) => new(pid, 1, "test", cpu, 0, 0);
 
     [Fact]
+    public void Closed_Process_Details_Never_Read_And_Reopened_Details_Warm_Up()
+    {
+        int reads = 0;
+        var collector = new ProcessMetricCollector(() =>
+        {
+            reads++;
+            return new([], 1, 1);
+        });
+        var wall = DateTimeOffset.UnixEpoch;
+        Assert.Equal(SensorHostMetricStatus.Unavailable, collector.Sample(Tick(0), wall, include: false).Status);
+        Assert.Equal(0, reads);
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, collector.Sample(Tick(1), wall.AddSeconds(1)).Status);
+        Assert.Equal(SensorHostMetricStatus.Ok, collector.Sample(Tick(2), wall.AddSeconds(2)).Status);
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, collector.Sample(Tick(3), wall.AddSeconds(3), reset: true).Status);
+        Assert.Equal(SensorHostMetricStatus.Unavailable, collector.Sample(Tick(4), wall.AddSeconds(4), include: false).Status);
+        Assert.Equal(3, reads);
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, collector.Sample(Tick(5), wall.AddSeconds(5)).Status);
+    }
+
+    [Fact]
     public void Normalizes_Cpu_To_Total_Capacity_And_Handles_Pid_Reuse_Reset_And_Exit()
     {
         ProcessCounter[] data = [Counter()];

@@ -6,6 +6,8 @@ using Avalonia.Input;
 using Avalonia;
 using Avalonia.VisualTree;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
+using System.Reflection;
 
 using DesktopSystemMonitor.App;
 using DesktopSystemMonitor.Core.Metrics;
@@ -100,6 +102,37 @@ public sealed class AvaloniaMainWindowTests
         await window.DisposeAsync();
     }
 
+    [AvaloniaTheory]
+    [InlineData(5, false)]
+    [InlineData(100, true)]
+    public async Task Fullscreen_Restores_Do_Not_Duplicate_Screen_Change_Saves(int restores, bool close)
+    {
+        var store = new MemorySettingsStore();
+        await using var window = new AvaloniaMainWindow();
+        window.EnableSettings(store);
+        window.Show();
+        for (int i = 0; i < restores; i++)
+        {
+            window.UpdateFullScreenVisibility(true);
+            window.UpdateFullScreenVisibility(false);
+        }
+        var screens = window.Screens;
+        // Headless has no physical display change. Raise the event through Avalonia's handler delegate.
+        var field = screens.GetType().GetField("_changedHandlers", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var raise = Assert.IsType<EventHandler>(field.GetValue(screens));
+        int before = store.Saves;
+        raise(screens, EventArgs.Empty);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(before + 1, store.Saves);
+        raise(screens, EventArgs.Empty);
+        if (close) window.Close();
+        await window.DisposeAsync();
+        before = store.Saves;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(before, store.Saves);
+        Assert.Null(field.GetValue(screens));
+    }
+
     [AvaloniaFact]
     public async Task Live_Polling_Shows_Actual_Values_And_Disconnect_State()
     {
@@ -110,6 +143,7 @@ public sealed class AvaloniaMainWindowTests
         Assert.Equal("25", window.FindControl<TextBlock>("MemoryText")!.Text);
         Assert.Equal("N/A", window.FindControl<TextBlock>("CpuText")!.Text);
         session.Metrics = SensorHostMetrics.Empty;
+        session.Status = new(MacSensorConnectionState.RetryStopped, MacSensorFailure.TimedOut, 5);
         await window.RefreshLiveAsync();
         Assert.Equal("N/A", window.FindControl<TextBlock>("MemoryText")!.Text);
         Assert.Contains("再接続", window.FindControl<MenuItem>("StatusMenu")!.Header?.ToString());
@@ -117,6 +151,26 @@ public sealed class AvaloniaMainWindowTests
         Assert.True(session.Stopped);
         Assert.True(session.Disposed);
         await window.RefreshLiveAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Process_Sampling_Follows_Details_And_Manual_Reconnect()
+    {
+        var session = new FakeSession();
+        await using var window = new AvaloniaMainWindow();
+        window.StartLiveMonitoring(session);
+        await window.RefreshLiveAsync();
+        Assert.Equal((false, false), session.LastProcessRequest);
+        window.ShowProcessDetails();
+        window.Show();
+        await window.RefreshLiveAsync();
+        Assert.Equal((true, true), session.LastProcessRequest);
+        await window.RefreshLiveAsync();
+        Assert.Equal((true, false), session.LastProcessRequest);
+        await window.ReconnectSensorsAsync();
+        Assert.Equal(1, session.Reconnects);
+        Assert.Equal((true, true), session.LastProcessRequest);
+        window.Close();
     }
 
     [AvaloniaFact]
@@ -231,6 +285,10 @@ public sealed class AvaloniaMainWindowTests
 
     private sealed class FakeSession : IMacSensorSession
     {
+        public MacSensorConnectionStatus Status { get; set; } = new(MacSensorConnectionState.Connected);
+        internal int Reconnects;
+        internal (bool Include, bool Reset) LastProcessRequest;
+        public ValueTask ReconnectAsync() { Reconnects++; return ValueTask.CompletedTask; }
         internal SensorHostMetrics Metrics = SensorHostMetrics.Empty with
         {
             CpuUtilizationPercent = SensorHostMetricValue.WarmingUp(),
@@ -238,9 +296,10 @@ public sealed class AvaloniaMainWindowTests
         };
         internal bool Hang, Stopped, Disposed;
         internal int Calls;
-        public async ValueTask<SensorHostMetrics> SampleAsync(CancellationToken cancellationToken)
+        public async ValueTask<SensorHostMetrics> SampleAsync(CancellationToken cancellationToken, bool includeHighLoadProcesses = false, bool resetHighLoadProcesses = false)
         {
             Calls++;
+            LastProcessRequest = (includeHighLoadProcesses, resetHighLoadProcesses);
             if (Hang) await Task.Delay(Timeout.Infinite, cancellationToken);
             return Metrics;
         }

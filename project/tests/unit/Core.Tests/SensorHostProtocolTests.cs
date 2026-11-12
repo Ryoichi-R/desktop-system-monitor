@@ -137,10 +137,10 @@ public sealed class SensorHostProtocolTests
     }
 
     [Theory]
-    [InlineData("\"version\":2", "\"version\":999,\"version\":2")]
+    [InlineData("\"version\":3", "\"version\":999,\"version\":3")]
     [InlineData("\"value\":25", "\"value\":0,\"value\":25")]
     [InlineData("\"name\":\"en0\"", "\"name\":\"other\",\"name\":\"en0\"")]
-    [InlineData("\"version\":2", "\"\\u0076ersion\":999,\"version\":2")]
+    [InlineData("\"version\":3", "\"\\u0076ersion\":999,\"version\":3")]
     public async Task Read_Rejects_Duplicate_Properties_At_All_Depths(string original, string duplicate)
     {
         string json = JsonSerializer.Serialize(CreateResponse(), JsonSerializerOptions.Web);
@@ -307,6 +307,33 @@ public sealed class SensorHostProtocolTests
             NetworkInterfaces = SensorHostMetricGroups.Ok<SensorHostNetworkInterfaceReading>(longName, 100),
         };
         Assert.Throws<InvalidDataException>(() => SensorHostProtocol.Validate(message with { Metrics = metrics }));
+    }
+
+    [Fact]
+    public async Task V3_Roundtrips_Process_Requests_And_Metric_Reasons()
+    {
+        using var stream = new MemoryStream();
+        var request = CreateResponse() with { Kind = "sample", IncludeHighLoadProcesses = true, ResetHighLoadProcesses = true };
+        var response = CreateResponse();
+        response = response with
+        {
+            Metrics = response.Metrics with { CpuTemperatureCelsius = SensorHostMetricValue.Unavailable(SensorHostMetricReason.UnvalidatedOs) },
+        };
+        await SensorHostProtocol.WriteAsync(stream, request, default);
+        await SensorHostProtocol.WriteAsync(stream, response, default);
+        stream.Position = 0;
+        var decoded = (await SensorHostProtocol.ReadAsync(stream, default))!;
+        Assert.True(decoded.IncludeHighLoadProcesses);
+        Assert.True(decoded.ResetHighLoadProcesses);
+        decoded = (await SensorHostProtocol.ReadAsync(stream, default))!;
+        Assert.Equal(SensorHostMetricReason.UnvalidatedOs, decoded.Metrics.CpuTemperatureCelsius.Reason);
+        Assert.Throws<InvalidDataException>(() => SensorHostProtocol.Validate(request with { IncludeHighLoadProcesses = false }));
+        Assert.Throws<InvalidDataException>(() => SensorHostProtocol.Validate(response with { IncludeHighLoadProcesses = true }));
+        var badReason = SensorHostMetricValue.Unavailable((SensorHostMetricReason)99);
+        Assert.Throws<InvalidDataException>(() => SensorHostProtocol.Validate(response with
+        {
+            Metrics = response.Metrics with { CpuTemperatureCelsius = badReason },
+        }));
     }
 
     [Fact]

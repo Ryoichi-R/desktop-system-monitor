@@ -11,7 +11,7 @@ namespace DesktopSystemMonitor.Core.Platform;
 /// </summary>
 public static class SensorHostProtocol
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public const int MaxPayloadBytes = 64 * 1024;
     public const int MaxNetworkInterfaces = 64;
     public const int MaxProcesses = 32;
@@ -101,6 +101,11 @@ public static class SensorHostProtocol
         if (message.Kind is not ("sample" or "response"))
         {
             throw new InvalidDataException("SensorHost message kind is not supported.");
+        }
+        if ((message.Kind == "response" && message.IncludeHighLoadProcesses) ||
+            (message.ResetHighLoadProcesses && !message.IncludeHighLoadProcesses))
+        {
+            throw new InvalidDataException("SensorHost process sampling flags are invalid.");
         }
         if (message.Status is not ("ok" or "unavailable" or "error"))
         {
@@ -223,6 +228,7 @@ public static class SensorHostProtocol
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
         options.Converters.Add(new JsonStringEnumConverter<SensorHostMetricStatus>());
+        options.Converters.Add(new JsonStringEnumConverter<SensorHostMetricReason>(allowIntegerValues: false));
         return options;
     }
 
@@ -237,7 +243,8 @@ public static class SensorHostProtocol
         {
             throw new InvalidDataException($"SensorHost {name} metric is missing.");
         }
-        if (!Enum.IsDefined(metric.Status) || metric.SampledAtMonotonicTicks < 0 ||
+        if (!Enum.IsDefined(metric.Status) || !Enum.IsDefined(metric.Reason) ||
+            (metric.Reason != SensorHostMetricReason.None && metric.Status != SensorHostMetricStatus.Unavailable) || metric.SampledAtMonotonicTicks < 0 ||
             metric.SampledAtMonotonicTicks > generatedAtMonotonicTicks)
         {
             throw new InvalidDataException($"SensorHost {name} metadata is invalid.");
@@ -401,6 +408,18 @@ public sealed record SensorHostMessage
     public required long GeneratedAtMonotonicTicks { get; init; }
     public required SensorHostMetrics Metrics { get; init; }
     public string? ErrorCode { get; init; }
+    public bool IncludeHighLoadProcesses { get; init; }
+    public bool ResetHighLoadProcesses { get; init; }
+}
+
+public enum SensorHostMetricReason
+{
+    None,
+    UnsupportedModel,
+    UnvalidatedOs,
+    MissingSensors,
+    ReadFailed,
+    CounterRange,
 }
 
 public sealed record SensorHostMetricValue
@@ -416,8 +435,11 @@ public sealed record SensorHostMetricValue
         SampledAtMonotonicTicks = sampledAtMonotonicTicks,
     };
 
-    public static SensorHostMetricValue Unavailable() => new()
+    public SensorHostMetricReason Reason { get; init; }
+
+    public static SensorHostMetricValue Unavailable(SensorHostMetricReason reason = SensorHostMetricReason.None) => new()
     {
+        Reason = reason,
         Status = SensorHostMetricStatus.Unavailable,
         Value = null,
         SampledAtMonotonicTicks = 0,

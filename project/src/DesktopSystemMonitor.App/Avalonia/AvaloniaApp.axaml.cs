@@ -82,6 +82,9 @@ public sealed class AvaloniaApp : Application
                 menu.Items.Add(new NativeMenuItemSeparator());
                 menu.Items.Add(diskDetails);
                 menu.Items.Add(processes);
+                var reconnect = new NativeMenuItem("センサーを再接続");
+                reconnect.Click += async (_, _) => await window.ReconnectSensorsAsync();
+                menu.Items.Add(reconnect);
                 menu.Items.Add(new NativeMenuItemSeparator());
                 menu.Items.Add(settings);
                 menu.Items.Add(new NativeMenuItemSeparator());

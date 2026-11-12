@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+- Bumped the product version to 0.3.0. The macOS app adds manual sensor
+  reconnection, single-instance locking and explicit settings recovery.
+- Fixed repeated screen-change subscriptions and retained the full width of
+  native network byte counters. SensorHost protocol 3 carries metric
+  unavailability reasons and requests process details only while visible.
+
 - Added common version information and copying to Windows WPF and macOS
-  Avalonia settings. Product version is now 0.2.0 for all OS/architectures;
+  Avalonia settings. The 0.2.0 update synchronized the product version across OS/architectures;
   Git identity, dirty state and UTC build time are embedded at compilation.
   macOS bundle versions are generated from Directory.Build.props, and the
   Windows publish step rejects an executable whose VERSIONINFO differs.

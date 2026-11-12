@@ -94,8 +94,8 @@
           </Grid>
           <Grid Height="48" RowDefinitions="29,19" ColumnDefinitions="38,*,*" ToolTip.Tip="Ethernet／Wi-Fiの送受信速度合計（仮想インターフェースは除外）">
             <TextBlock Classes="label" Text="NET" />
-            <TextBlock Grid.Column="1" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FF5DCAA5" Text="▼ " /><Run x:Name="NetworkReceiveText" Text="N/A" /></TextBlock>
-            <TextBlock Grid.Column="2" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FFEF9F27" Text="▲ " /><Run x:Name="NetworkSendText" Text="N/A" /></TextBlock>
+            <TextBlock x:Name="NetworkReceiveValue" Grid.Column="1" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FF5DCAA5" Text="▼ " /><Run x:Name="NetworkReceiveText" Text="N/A" /></TextBlock>
+            <TextBlock x:Name="NetworkSendValue" Grid.Column="2" FontSize="15" FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center"><Run Foreground="#FFEF9F27" Text="▲ " /><Run x:Name="NetworkSendText" Text="N/A" /></TextBlock>
             <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,*">
               <TextBlock x:Name="NetworkPeakLabel" Text="60s max" FontSize="11" Foreground="#FFB0B0B0" />
               <TextBlock x:Name="NetworkPeakReceiveText" Grid.Column="1" Text="--" FontSize="11" TextAlignment="Right" Foreground="#FF5DCAA5" />

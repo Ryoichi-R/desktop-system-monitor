@@ -18,8 +18,12 @@ public sealed class NativeHostIntegrationTests
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var first = await session.SampleAsync(deadline.Token);
         Assert.Equal(SensorHostMetricStatus.Ok, first.MemoryTotalBytes.Status);
+        Assert.Equal(SensorHostMetricStatus.Unavailable, first.HighLoadProcesses.Status);
         await Task.Delay(1100, deadline.Token);
-        var second = await session.SampleAsync(deadline.Token);
+        var opened = await session.SampleAsync(deadline.Token, includeHighLoadProcesses: true, resetHighLoadProcesses: true);
+        Assert.Equal(SensorHostMetricStatus.WarmingUp, opened.HighLoadProcesses.Status);
+        await Task.Delay(1100, deadline.Token);
+        var second = await session.SampleAsync(deadline.Token, includeHighLoadProcesses: true);
         Assert.Equal(SensorHostMetricStatus.Ok, second.CpuUtilizationPercent.Status);
         Assert.Equal(SensorHostMetricStatus.Ok, second.DiskReadBytesPerSecond.Status);
         Assert.Equal(SensorHostMetricStatus.Ok, second.HighLoadProcesses.Status);
@@ -29,10 +33,10 @@ public sealed class NativeHostIntegrationTests
         Assert.Equal(SensorHostMetricStatus.Unavailable, missing.MemoryTotalBytes.Status);
         Assert.Empty(missing.HighLoadProcesses.Values);
         await Task.Delay(1200, deadline.Token);
-        var recovered = await session.SampleAsync(deadline.Token);
+        var recovered = await session.SampleAsync(deadline.Token, includeHighLoadProcesses: true);
         Assert.Equal(SensorHostMetricStatus.Ok, recovered.MemoryTotalBytes.Status);
         Assert.Equal(SensorHostMetricStatus.WarmingUp, recovered.HighLoadProcesses.Status);
         await Task.Delay(1100, deadline.Token);
-        Assert.Equal(SensorHostMetricStatus.Ok, (await session.SampleAsync(deadline.Token)).HighLoadProcesses.Status);
+        Assert.Equal(SensorHostMetricStatus.Ok, (await session.SampleAsync(deadline.Token, includeHighLoadProcesses: true)).HighLoadProcesses.Status);
     }
 }

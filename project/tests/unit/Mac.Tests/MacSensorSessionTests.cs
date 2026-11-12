@@ -74,13 +74,62 @@ public sealed class MacSensorSessionTests
         await session.DisposeAsync();
     }
 
+    [Fact]
+    public async Task Manual_Reconnect_Releases_Stopped_Session_And_Resets_Backoff()
+    {
+        long clock = 0;
+        var connection = new Fake();
+        int starts = 0;
+        await using var session = new MacSensorSession(() =>
+        {
+            if (++starts <= 5) throw new IOException("test");
+            return connection;
+        }, () => clock, TimeSpan.FromSeconds(1));
+        for (int i = 0; i < 5; i++)
+        {
+            clock += 20 * Stopwatch.Frequency;
+            await session.SampleAsync(default);
+        }
+        Assert.Equal(new(MacSensorConnectionState.RetryStopped, MacSensorFailure.ConnectionFailed, 5), session.Status);
+        await session.ReconnectAsync();
+        Assert.Equal(MacSensorConnectionState.Connecting, session.Status.State);
+        Assert.Equal(25, (await session.SampleAsync(default, true, true)).MemoryUtilizationPercent.Value);
+        Assert.Equal(MacSensorConnectionState.Connected, session.Status.State);
+        Assert.True(connection.IncludedProcesses);
+        Assert.True(connection.ResetProcesses);
+    }
+
+    [Fact]
+    public async Task Reconnect_Cancels_Exchange_And_Reclaims_Host_Before_Starting_Next_Generation()
+    {
+        var old = new Fake { Hang = true };
+        var next = new Fake();
+        int starts = 0;
+        await using var session = new MacSensorSession(() =>
+        {
+            if (++starts == 1) return old;
+            Assert.True(old.Disposed);
+            return next;
+        }, Stopwatch.GetTimestamp, TimeSpan.FromSeconds(10));
+        var pending = session.SampleAsync(default).AsTask();
+        await session.ReconnectAsync();
+        Assert.Equal(SensorHostMetricStatus.Unavailable, (await pending).MemoryUtilizationPercent.Status);
+        Assert.Equal(25, (await session.SampleAsync(default)).MemoryUtilizationPercent.Value);
+        Assert.True(next.LastGeneration > old.LastGeneration);
+        Assert.Equal(2, starts);
+    }
+
     private sealed class Fake : ISensorHostConnection
     {
         internal bool WrongSequence, Hang, Disposed;
-        internal long LastSequence;
+        internal long LastSequence, LastGeneration;
+        internal bool IncludedProcesses, ResetProcesses;
         public async ValueTask<SensorHostMessage?> ExchangeAsync(SensorHostMessage request, CancellationToken cancellationToken)
         {
             LastSequence = request.Sequence;
+            LastGeneration = request.HostGeneration;
+            IncludedProcesses = request.IncludeHighLoadProcesses;
+            ResetProcesses = request.ResetHighLoadProcesses;
             if (Hang) await Task.Delay(Timeout.Infinite, cancellationToken);
             return SensorHostProtocol.Unavailable(request.Sequence + (WrongSequence ? 1 : 0), request.HostGeneration, "") with
             {

@@ -206,11 +206,22 @@ public sealed class MacWidgetSettingsTests
         {
             var store = new MacWidgetSettingsStore(path);
             store.Save(new() { Scale = 0.75 });
+            byte[] original = File.ReadAllBytes(path);
             Directory.CreateDirectory(backup);
-            Assert.ThrowsAny<IOException>(() => store.Save(new() { Scale = 1.25 }));
+
+            // Moving a file over a directory can report access denied on Windows.
+            var saveError = Record.Exception(() => store.Save(new() { Scale = 1.25 }));
+            Assert.True(
+                saveError is IOException or UnauthorizedAccessException,
+                $"Expected an I/O or access-denied error, got {saveError?.GetType().FullName ?? "no exception"}.");
+            Assert.Equal(original, File.ReadAllBytes(path));
             Assert.Equal(0.75, store.Load().Scale);
+            Assert.Equal(path, Assert.Single(Directory.GetFiles(root)));
+
             Directory.Delete(backup);
             store.Save(new() { Scale = 1.25 });
+            Assert.Equal(1.25, store.Load().Scale);
+            Assert.Equal(original, File.ReadAllBytes(backup));
             File.WriteAllText(path, "broken");
             var request = store.Inspect().Recovery!;
             File.WriteAllText(backup, "{\"Version\":1,\"Scale\":1.5}");

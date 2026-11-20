@@ -26,7 +26,11 @@ public sealed class PdhQuery : IDisposable
         _query = handle;
     }
 
-    public bool TryAddCounter(string englishPath)
+    public bool TryAddCounter(string englishPath) => TryAddCounter(englishPath, null);
+
+    public bool TryAddCounter(ExpandedCounter counter) => TryAddCounter(counter.EnglishPath, counter.LocalizedPath);
+
+    private bool TryAddCounter(string englishPath, string? localizedPath)
     {
         ArgumentNullException.ThrowIfNull(englishPath);
         if (_query.IsClosed || _query.IsInvalid)
@@ -41,7 +45,9 @@ public sealed class PdhQuery : IDisposable
         IntPtr counter;
         try
         {
-            hr = PdhInterop.PdhAddEnglishCounter(_query, englishPath, IntPtr.Zero, out counter);
+            hr = localizedPath is null
+                ? PdhInterop.PdhAddEnglishCounter(_query, englishPath, IntPtr.Zero, out counter)
+                : PdhInterop.AddLocalizedCounter(_query, localizedPath, IntPtr.Zero, out counter);
         }
         catch (ObjectDisposedException)
         {
@@ -158,30 +164,67 @@ public sealed class PdhQuery : IDisposable
     /// the English name registry via a temporary query, so callers should pass
     /// the English form.
     /// </summary>
-    public static IReadOnlyList<string> ExpandWildcard(string wildcardPath)
+    public static IReadOnlyList<string> ExpandWildcard(string wildcardPath) =>
+        ExpandCounters(wildcardPath).Select(counter => counter.EnglishPath).ToArray();
+
+    public static IReadOnlyList<ExpandedCounter> ExpandCounters(string wildcardPath)
     {
         ArgumentNullException.ThrowIfNull(wildcardPath);
+        using var temporary = new PdhQuery();
+        if (!temporary.TryAddCounter(wildcardPath)) return [];
+        IntPtr handle = temporary._counters[wildcardPath];
         uint size = 0;
-        _ = PdhInterop.PdhExpandWildCardPath(IntPtr.Zero, wildcardPath, IntPtr.Zero, ref size, PdhInterop.PDH_REFRESHCOUNTERS);
-        if (size == 0)
-        {
-            return Array.Empty<string>();
-        }
-        // Allocate wchar buffer
-        IntPtr buffer = Marshal.AllocHGlobal(checked((int)(size * sizeof(char))));
+        if (PdhInterop.GetCounterInfo(handle, 0, ref size, IntPtr.Zero) != PdhInterop.PDH_MORE_DATA
+            || size < Marshal.SizeOf<PdhInterop.CounterInfoHeader>()) return [];
+        IntPtr buffer = Marshal.AllocHGlobal(checked((int)size));
         try
         {
-            uint hr = PdhInterop.PdhExpandWildCardPath(IntPtr.Zero, wildcardPath, buffer, ref size, PdhInterop.PDH_REFRESHCOUNTERS);
-            if (hr != 0)
-            {
-                return Array.Empty<string>();
-            }
-            return ReadMultiSz(buffer, (int)size);
+            if (PdhInterop.GetCounterInfo(handle, 0, ref size, buffer) != 0) return [];
+            string? localized = Marshal.PtrToStringUni(Marshal.PtrToStructure<PdhInterop.CounterInfoHeader>(buffer).FullPath);
+            return localized is null ? [] : ExpandInstances(wildcardPath, localized, PdhInterop.PdhExpandWildCardPath);
         }
-        finally
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    internal delegate uint ExpandPath(IntPtr source, string path, IntPtr buffer, ref uint size, uint flags);
+
+    internal static IReadOnlyList<ExpandedCounter> ExpandInstances(string english, string localized, ExpandPath expand)
+    {
+        // The providers enumerate instances of a single named counter.
+        int star = localized.IndexOf("(*)", StringComparison.Ordinal);
+        if (star < 0 || !english.Contains("(*)", StringComparison.Ordinal)) return [];
+        int objectStart = localized.LastIndexOf('\\', star);
+        if (objectStart < 0) return [];
+        string prefix = localized[objectStart..(star + 1)];
+        string suffix = localized[(star + 2)..];
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            Marshal.FreeHGlobal(buffer);
+            uint size = 0;
+            uint status = expand(IntPtr.Zero, localized, IntPtr.Zero, ref size, PdhInterop.PDH_REFRESHCOUNTERS);
+            if (status != PdhInterop.PDH_MORE_DATA || size == 0) break;
+            uint capacity = size;
+            IntPtr buffer = Marshal.AllocHGlobal(checked((int)size * sizeof(char)));
+            try
+            {
+                status = expand(IntPtr.Zero, localized, buffer, ref size, PdhInterop.PDH_REFRESHCOUNTERS);
+                if (status == PdhInterop.PDH_MORE_DATA) continue;
+                if (status != 0 || size > capacity) break;
+                var results = new List<ExpandedCounter>();
+                foreach (string path in ReadMultiSz(buffer, (int)size))
+                {
+                    int start = path.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                    if (start < 0 || !path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+                    start += prefix.Length;
+                    int end = path.Length - suffix.Length;
+                    if (end <= start) continue;
+                    string instance = path[start..end];
+                    results.Add(new(english.Replace("(*)", $"({instance})", StringComparison.Ordinal), path, instance));
+                }
+                return results;
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
         }
+        return [];
     }
 
     private static List<string> ReadMultiSz(IntPtr buffer, int totalChars)
@@ -218,3 +261,5 @@ public sealed class PdhQuery : IDisposable
         GC.SuppressFinalize(this);
     }
 }
+
+public readonly record struct ExpandedCounter(string EnglishPath, string LocalizedPath, string Instance);

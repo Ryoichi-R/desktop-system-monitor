@@ -168,6 +168,7 @@ internal static class Program
         private const string FrequencyPath = @"\Processor Information(_Total)\Processor Frequency";
         private const string HyperVWildcard = @"\Hyper-V Hypervisor Logical Processor(*)\Frequency";
         private readonly PdhQuery _query = new();
+        private readonly List<string> _hyperVPaths = [];
         private readonly uint _maxMhz;
         private bool _hasBaseline;
 
@@ -177,9 +178,9 @@ internal static class Program
             _query.TryAddCounter(TimePath);
             _query.TryAddCounter(PerformancePath);
             _query.TryAddCounter(FrequencyPath);
-            foreach (string path in PdhQuery.ExpandWildcard(HyperVWildcard))
+            foreach (var counter in PdhQuery.ExpandCounters(HyperVWildcard))
             {
-                _query.TryAddCounter(path);
+                if (_query.TryAddCounter(counter)) _hyperVPaths.Add(counter.EnglishPath);
             }
             _maxMhz = ProcessorPowerInformation.GetMaxMhz();
         }
@@ -213,7 +214,7 @@ internal static class Program
         {
             double total = 0;
             int count = 0;
-            foreach (string path in _query.CounterPaths.Where(path => path.Contains("Hyper-V Hypervisor Logical Processor(", StringComparison.OrdinalIgnoreCase)))
+            foreach (string path in _hyperVPaths)
             {
                 if (_query.TryGetDouble(path, out double value))
                 {

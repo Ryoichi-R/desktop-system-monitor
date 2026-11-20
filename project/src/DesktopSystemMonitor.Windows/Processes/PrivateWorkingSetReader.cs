@@ -86,15 +86,17 @@ internal sealed class ProcessV2PrivateWorkingSetReader : IPrivateWorkingSetReade
             return false;
         }
 
-        int closeParenthesis = counterPath.Length - counterSuffix.Length;
-        int separator = counterPath.LastIndexOf(':', closeParenthesis - 1);
-        if (separator < 0 || separator + 1 >= closeParenthesis)
-        {
-            return false;
-        }
+        return TryParseInstanceId(counterPath.AsSpan(counterPrefix.Length,
+            counterPath.Length - counterPrefix.Length - counterSuffix.Length), out processId);
+    }
 
+    internal static bool TryParseInstanceId(ReadOnlySpan<char> instance, out int processId)
+    {
+        int separator = instance.LastIndexOf(':');
+        processId = 0;
+        if (separator < 0) return false;
         return int.TryParse(
-            counterPath.AsSpan(separator + 1, closeParenthesis - separator - 1),
+            instance[(separator + 1)..],
             NumberStyles.None,
             CultureInfo.InvariantCulture,
             out processId)
@@ -105,17 +107,14 @@ internal sealed class ProcessV2PrivateWorkingSetReader : IPrivateWorkingSetReade
     {
         try
         {
-            IReadOnlyList<string> paths = PdhQuery.ExpandWildcard(WorkingSetPrivateWildcard);
+            var paths = PdhQuery.ExpandCounters(WorkingSetPrivateWildcard);
             if (paths.Count == 0)
             {
                 return new Dictionary<int, long>();
             }
 
             using var query = new PdhQuery();
-            foreach (string path in paths)
-            {
-                _ = query.TryAddCounter(path);
-            }
+            var registered = paths.Where(query.TryAddCounter).DistinctBy(counter => counter.EnglishPath).ToArray();
             if (query.CounterPaths.Count == 0 || !query.Collect())
             {
                 return new Dictionary<int, long>();
@@ -123,10 +122,10 @@ internal sealed class ProcessV2PrivateWorkingSetReader : IPrivateWorkingSetReade
 
             var values = new Dictionary<int, long>();
             var duplicates = new HashSet<int>();
-            foreach (string path in query.CounterPaths)
+            foreach (var counter in registered)
             {
-                if (!TryParseProcessId(path, out int processId)
-                    || !query.TryGetDouble(path, out double value)
+                if (!TryParseInstanceId(counter.Instance, out int processId)
+                    || !query.TryGetDouble(counter.EnglishPath, out double value)
                     || value < 0
                     || value > long.MaxValue)
                 {

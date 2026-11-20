@@ -55,10 +55,11 @@ internal sealed class EnergyMeterCpuPowerReader : ICpuPowerReader
         PdhPowerCounterQuery? query = null;
         try
         {
-            query = new PdhPowerCounterQuery();
+            var counters = PdhQuery.ExpandCounters(PowerWildcardPath).ToDictionary(c => c.EnglishPath, StringComparer.OrdinalIgnoreCase);
+            query = new PdhPowerCounterQuery(counters);
             return TryCreateOwned(
                 query,
-                PdhQuery.ExpandWildcard(PowerWildcardPath),
+                counters.Keys,
                 onError);
         }
         catch (Exception ex)
@@ -268,11 +269,11 @@ internal interface IPowerCounterQuery : IDisposable
     bool TryGetDouble(string path, out double value);
 }
 
-internal sealed class PdhPowerCounterQuery : IPowerCounterQuery
+internal sealed class PdhPowerCounterQuery(IReadOnlyDictionary<string, ExpandedCounter> counters) : IPowerCounterQuery
 {
     private readonly PdhQuery _query = new();
 
-    public bool TryAddCounter(string path) => _query.TryAddCounter(path);
+    public bool TryAddCounter(string path) => _query.TryAddCounter(counters[path]);
     public bool Collect() => _query.Collect();
     public bool TryGetDouble(string path, out double value) => _query.TryGetDouble(path, out value);
     public void Dispose() => _query.Dispose();

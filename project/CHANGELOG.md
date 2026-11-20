@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 0.3.1 protects unmanaged files and verified backups during Windows updates,
+  preserves recovered settings and future schemas, and localizes PDH wildcard queries.
+  macOS now displays the actual login registration for protected settings, filters
+  network interfaces before applying the protocol limit, and bundles the MIT license.
+
 - Bumped the product version to 0.3.0. The macOS app adds manual sensor
   reconnection, single-instance locking and explicit settings recovery.
 - Fixed repeated screen-change subscriptions and retained the full width of

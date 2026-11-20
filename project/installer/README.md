@@ -32,5 +32,22 @@ skips payload promotion. Do not invoke the package builder directly against
 `installer\payload`; it intentionally requires a staging output.
 
 Exit codes: `0` success, `2` invalid input, `3` folder selection cancelled,
-`4` unsupported runtime/status/package, and `5` installation or rollback
-failure.
+`4` unsupported runtime/status/package, `5` installation failure, and `6` failed rollback or pending recovery.
+
+### Recovering an interrupted update (exit 6)
+
+1. Close Desktop System Monitor. Open the destination-specific
+   `*.recovery.json` under `%LOCALAPPDATA%\DesktopSystemMonitorInstaller\Backups`.
+   Keep the journal and the entire directory named by `backupPath`.
+2. Check the SHA-256 of the backed-up `.desktop-system-monitor-install.json`
+   against `markerSha256` with `Get-FileHash -LiteralPath <file> -Algorithm SHA256`.
+   Check every relative file in its `managedFiles` list against its recorded SHA-256.
+3. Resolve the reported lock or access error. Preserve unrelated user files.
+   Inspect any leftover paths in `createdFiles` and move the failed update's
+   new files aside. Copy the verified files to the same relative paths under
+   `installDirectory`, then restore the original marker byte for byte.
+   For a failed first install the marker hash is null and there is no prior
+   version to restore. Move only the listed installer-created files aside.
+4. Run the installer again. It checks the restored marker and managed files
+   before clearing the journal. A backup-rotation warning after a successful
+   update names the retained backup locations and the new version remains installed.

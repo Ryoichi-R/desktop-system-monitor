@@ -6,6 +6,7 @@ namespace DesktopSystemMonitor.Windows.Disk;
 internal interface IDiskCounterQuery : IDisposable
 {
     bool TryAddCounter(string path);
+    bool TryAddCounter(ExpandedCounter counter);
     bool Collect();
     bool TryGetDouble(string path, out double value);
 }
@@ -15,6 +16,7 @@ internal sealed class PdhDiskCounterQuery : IDiskCounterQuery
     private readonly PdhQuery _query = new();
 
     public bool TryAddCounter(string path) => _query.TryAddCounter(path);
+    public bool TryAddCounter(ExpandedCounter counter) => _query.TryAddCounter(counter);
     public bool Collect() => _query.Collect();
     public bool TryGetDouble(string path, out double value) => _query.TryGetDouble(path, out value);
     public void Dispose() => _query.Dispose();
@@ -25,7 +27,7 @@ public sealed class DiskMetricSource : IDiskMetricSource
     private const string IdleWildcard = @"\PhysicalDisk(*)\% Idle Time";
     private static readonly TimeSpan RebuildRetryDelay = TimeSpan.FromSeconds(5);
     private readonly IVolumeDiskResolver _resolver;
-    private readonly Func<IReadOnlyList<string>> _expandWildcard;
+    private readonly Func<IReadOnlyList<ExpandedCounter>> _expandWildcard;
     private readonly Func<IDiskCounterQuery> _queryFactory;
     private readonly Func<DateTimeOffset> _utcNow;
     private IDiskCounterQuery? _query;
@@ -43,7 +45,7 @@ public sealed class DiskMetricSource : IDiskMetricSource
 
     public DiskMetricSource() : this(
         new VolumeDiskResolver(),
-        () => PdhQuery.ExpandWildcard(IdleWildcard),
+        () => PdhQuery.ExpandCounters(IdleWildcard),
         () => new PdhDiskCounterQuery(),
         () => DateTimeOffset.UtcNow)
     {
@@ -51,7 +53,7 @@ public sealed class DiskMetricSource : IDiskMetricSource
 
     internal DiskMetricSource(IVolumeDiskResolver resolver) : this(
         resolver,
-        () => PdhQuery.ExpandWildcard(IdleWildcard),
+        () => PdhQuery.ExpandCounters(IdleWildcard),
         () => new PdhDiskCounterQuery(),
         () => DateTimeOffset.UtcNow)
     {
@@ -59,7 +61,7 @@ public sealed class DiskMetricSource : IDiskMetricSource
 
     internal DiskMetricSource(
         IVolumeDiskResolver resolver,
-        Func<IReadOnlyList<string>> expandWildcard,
+        Func<IReadOnlyList<ExpandedCounter>> expandWildcard,
         Func<IDiskCounterQuery> queryFactory,
         Func<DateTimeOffset> utcNow)
     {
@@ -69,8 +71,8 @@ public sealed class DiskMetricSource : IDiskMetricSource
         _utcNow = utcNow;
     }
 
-    public static IReadOnlyList<int> EnumerateAvailableDiskNumbers() => PdhQuery.ExpandWildcard(IdleWildcard)
-        .Select(path => DiskInstanceName.TryParseCounterPath(path, out PhysicalDiskInstance parsed) ? parsed.DiskNumber : (int?)null)
+    public static IReadOnlyList<int> EnumerateAvailableDiskNumbers() => PdhQuery.ExpandCounters(IdleWildcard)
+        .Select(path => DiskInstanceName.TryParseInstance(path.Instance, out PhysicalDiskInstance parsed) ? parsed.DiskNumber : (int?)null)
         .Where(number => number is not null)
         .Select(number => number!.Value)
         .Distinct()
@@ -222,7 +224,7 @@ public sealed class DiskMetricSource : IDiskMetricSource
             return;
         }
 
-        IReadOnlyList<string> counterPaths;
+        IReadOnlyList<ExpandedCounter> counterPaths;
         try
         {
             counterPaths = _expandWildcard();
@@ -235,10 +237,9 @@ public sealed class DiskMetricSource : IDiskMetricSource
             return;
         }
 
-        PhysicalDiskInstance? match = counterPaths
-            .Select(path => DiskInstanceName.TryParseCounterPath(path, out PhysicalDiskInstance parsed) ? parsed : (PhysicalDiskInstance?)null)
-            .FirstOrDefault(item => item?.DiskNumber == requestedDiskNumber);
-        if (match is null)
+        var match = counterPaths.FirstOrDefault(counter =>
+            DiskInstanceName.TryParseInstance(counter.Instance, out var disk) && disk.DiskNumber == requestedDiskNumber);
+        if (match.Instance is null)
         {
             _label = $"Disk {requestedDiskNumber} N/A";
             _reason = DiskAvailabilityReason.RequestedDiskNotFound;
@@ -248,15 +249,15 @@ public sealed class DiskMetricSource : IDiskMetricSource
         _activeDiskNumber = requestedDiskNumber;
         _label = _requestedDiskNumber is null ? $"自動: Disk {requestedDiskNumber}" : $"手動: Disk {requestedDiskNumber}";
         _reason = DiskAvailabilityReason.None;
-        string prefix = $@"\PhysicalDisk({match.Value.InstanceName})";
-        _idlePath = prefix + @"\% Idle Time";
+        string prefix = $@"\PhysicalDisk({match.Instance})";
+        _idlePath = match.EnglishPath;
         _readPath = prefix + @"\Disk Read Bytes/sec";
         _writePath = prefix + @"\Disk Write Bytes/sec";
         IDiskCounterQuery? query = null;
         try
         {
             query = _queryFactory();
-            if (!query.TryAddCounter(_idlePath) || !query.TryAddCounter(_readPath) || !query.TryAddCounter(_writePath))
+            if (!query.TryAddCounter(match) || !query.TryAddCounter(_readPath) || !query.TryAddCounter(_writePath))
             {
                 query.Dispose();
                 _reason = DiskAvailabilityReason.CounterOpenFailed;

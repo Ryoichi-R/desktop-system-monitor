@@ -26,6 +26,7 @@ public sealed class GpuMetricSource : IGpuMetricSource
     private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDxgiEnumUtc = DateTimeOffset.MinValue;
     private IReadOnlyList<DxgiAdapterInfo> _dxgi = Array.Empty<DxgiAdapterInfo>();
+    private Dictionary<string, (ExpandedCounter Counter, bool IsEngine)> _instances = new(StringComparer.Ordinal);
     private int _samplesCollected;
     private readonly PreferredAdapterSelectionStore _preferredAdapter = new();
     private readonly GpuRecoveryTracker _recovery = new();
@@ -88,16 +89,8 @@ public sealed class GpuMetricSource : IGpuMetricSource
         int validMemoryValues = 0;
         foreach (string path in _query.CounterPaths)
         {
-            if (!TryExtractInstance(path, out string instance))
-            {
-                continue;
-            }
-            bool isEngine = path.Contains("\\GPU Engine(", StringComparison.OrdinalIgnoreCase);
-            bool isMemory = path.Contains("\\GPU Adapter Memory(", StringComparison.OrdinalIgnoreCase);
-            if (!isEngine && !isMemory)
-            {
-                continue;
-            }
+            var (counter, isEngine) = _instances[path];
+            string instance = counter.Instance;
             if (isEngine)
             {
                 expectedEngineValues++;
@@ -226,57 +219,26 @@ public sealed class GpuMetricSource : IGpuMetricSource
             _lastDxgiEnumUtc = _clock.UtcNow;
         }
 
-        var engineInstances = PdhQuery.ExpandWildcard(EngineWildcard);
-        var memoryInstances = PdhQuery.ExpandWildcard(MemoryWildcard);
+        var desired = new Dictionary<string, (ExpandedCounter Counter, bool IsEngine)>(StringComparer.Ordinal);
+        foreach (var counter in PdhQuery.ExpandCounters(EngineWildcard)) desired[counter.EnglishPath] = (counter, true);
+        foreach (var counter in PdhQuery.ExpandCounters(MemoryWildcard)) desired[counter.EnglishPath] = (counter, false);
 
-        var desiredPaths = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var p in engineInstances)
-        {
-            desiredPaths.Add(p);
-        }
-        foreach (var p in memoryInstances)
-        {
-            desiredPaths.Add(p);
-        }
-
-        var current = new HashSet<string>(_query.CounterPaths, StringComparer.Ordinal);
-        // Remove obsolete first
+        var current = _query.CounterPaths.ToHashSet(StringComparer.Ordinal);
         foreach (var path in current)
         {
-            if (!desiredPaths.Contains(path))
-            {
-                _query.RemoveCounter(path);
-            }
+            if (!desired.ContainsKey(path)) _query.RemoveCounter(path);
         }
         int added = 0;
-        foreach (var path in desiredPaths)
+        foreach (var (counter, _) in desired.Values)
         {
-            if (!current.Contains(path))
-            {
-                if (_query.TryAddCounter(path))
-                {
-                    added++;
-                }
-            }
+            if (!current.Contains(counter.EnglishPath) && _query.TryAddCounter(counter)) added++;
         }
+        _instances = desired;
         if (added > 0)
         {
             // New rate counters need a fresh baseline; force one more warmup tick.
             _samplesCollected = 0;
         }
-    }
-
-    private static bool TryExtractInstance(string path, out string instance)
-    {
-        instance = string.Empty;
-        int open = path.IndexOf('(');
-        int close = path.IndexOf(')', open + 1);
-        if (open < 0 || close < 0 || close <= open + 1)
-        {
-            return false;
-        }
-        instance = path[(open + 1)..close];
-        return true;
     }
 
     public void ResetBaseline()

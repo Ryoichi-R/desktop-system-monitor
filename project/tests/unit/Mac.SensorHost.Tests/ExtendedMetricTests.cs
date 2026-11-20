@@ -93,6 +93,35 @@ public sealed class ExtendedMetricTests
         Assert.Equal(SensorHostMetricReason.CounterRange, value.Reason);
     }
 
+    [Fact]
+    public void Native_network_filters_before_resolving_names_and_limiting_sample_size()
+    {
+        byte[] buffer = Enumerable.Range(1, 65).SelectMany(i =>
+        {
+            var item = Buffer();
+            BinaryPrimitives.WriteUInt16LittleEndian(item.AsSpan(12), (ushort)i);
+            if (i == 1) BinaryPrimitives.WriteUInt32LittleEndian(item.AsSpan(8), 9);
+            return item;
+        }).ToArray();
+        string Name(uint index) => index switch
+        {
+            1 => throw new InvalidOperationException("loopback must not be resolved"),
+            2 => null,
+            65 => "en0",
+            _ => "utun" + index,
+        };
+        var collector = new NetworkMetricCollector(() => NativeNetworkReader.Parse(buffer, Name));
+        Assert.Single(collector.Sample(Tick(0), Epoch).Values);
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(64 * 160 + 96), 4294967552 + 1024);
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(64 * 160 + 104), 512);
+        var reading = Assert.Single(collector.Sample(Tick(1), Epoch.AddSeconds(1)).Values);
+        Assert.Equal(1024, reading.ReceiveBytesPerSecond.Value);
+        Assert.Equal(512, reading.SendBytesPerSecond.Value);
+        Assert.Equal(64, NativeNetworkReader.Parse(buffer, i => "en" + i).Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(8), 1);
+        Assert.Throws<InvalidDataException>(() => NativeNetworkReader.Parse(buffer, i => "en" + i));
+    }
+
     private static byte[] Buffer()
     {
         byte[] data = new byte[160];

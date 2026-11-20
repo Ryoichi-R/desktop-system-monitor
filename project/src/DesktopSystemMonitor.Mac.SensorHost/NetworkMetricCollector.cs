@@ -5,7 +5,10 @@ using DesktopSystemMonitor.Mac.SensorHost.Interop;
 
 namespace DesktopSystemMonitor.Mac.SensorHost;
 
-internal sealed record NetworkCounter(uint Index, string Name, uint Flags, ulong BaudRate, ulong Received, ulong Sent, bool Is32Bit = false);
+internal sealed record NetworkCounter(uint Index, string Name, uint Flags, ulong BaudRate, ulong Received, ulong Sent, bool Is32Bit = false)
+{
+    internal static bool IsActive(uint flags) => (flags & 1) != 0 && (flags & 8) == 0;
+}
 
 internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
 {
@@ -18,14 +21,14 @@ internal sealed class NetworkMetricCollector(Func<NetworkCounter[]> read)
         try
         {
             var counters = read();
-            if (counters.Length > SensorHostProtocol.MaxNetworkInterfaces || counters.Select(c => c.Index).Distinct().Count() != counters.Length)
-                throw new InvalidDataException("Invalid interface collection.");
             double seconds = (now - _previousTime) / (double)Stopwatch.Frequency;
             bool longGap = seconds <= 0 || seconds > 3 || (wall - _previousWall).TotalSeconds is < 0 or > 3;
             _previousTime = now;
             _previousWall = wall;
-            var active = counters.Where(c => (c.Flags & 1) != 0 && (c.Flags & 8) == 0
+            var active = counters.Where(c => NetworkCounter.IsActive(c.Flags)
                 && c.Name.StartsWith("en", StringComparison.Ordinal)).ToArray();
+            if (active.Length > SensorHostProtocol.MaxNetworkInterfaces || active.Select(c => c.Index).Distinct().Count() != active.Length)
+                throw new InvalidDataException("Invalid interface collection.");
             foreach (uint index in _baselines.Keys.Except(active.Select(c => c.Index)).ToArray()) _baselines.Remove(index);
             var result = new List<SensorHostNetworkInterfaceReading>();
             foreach (var counter in active)
@@ -93,7 +96,7 @@ internal static unsafe class NativeNetworkReader
         return Parse(buffer.AsSpan(0, (int)length), Name);
     }
 
-    internal static NetworkCounter[] Parse(ReadOnlySpan<byte> buffer, Func<uint, string> name)
+    internal static NetworkCounter[] Parse(ReadOnlySpan<byte> buffer, Func<uint, string?> name)
     {
         var result = new List<NetworkCounter>();
         while (!buffer.IsEmpty)
@@ -105,22 +108,27 @@ internal static unsafe class NativeNetworkReader
             {
                 if (length < 160) throw new InvalidDataException("Truncated interface statistics.");
                 uint index = BinaryPrimitives.ReadUInt16LittleEndian(buffer[12..]);
-                if (index == 0 || result.Count >= SensorHostProtocol.MaxNetworkInterfaces) throw new InvalidDataException("Invalid interface index/count.");
-                result.Add(new(index, name(index), BinaryPrimitives.ReadUInt32LittleEndian(buffer[8..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(buffer[48..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(buffer[96..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(buffer[104..])));
+                if (index == 0) throw new InvalidDataException("Invalid interface index.");
+                uint flags = BinaryPrimitives.ReadUInt32LittleEndian(buffer[8..]);
+                if (NetworkCounter.IsActive(flags) && name(index) is string resolved && resolved.StartsWith("en", StringComparison.Ordinal))
+                {
+                    if (result.Count >= SensorHostProtocol.MaxNetworkInterfaces) throw new InvalidDataException("Too many active interfaces.");
+                    result.Add(new(index, resolved, flags,
+                        BinaryPrimitives.ReadUInt64LittleEndian(buffer[48..]),
+                        BinaryPrimitives.ReadUInt64LittleEndian(buffer[96..]),
+                        BinaryPrimitives.ReadUInt64LittleEndian(buffer[104..])));
+                }
             }
             buffer = buffer[length..];
         }
         return result.ToArray();
     }
 
-    private static string Name(uint index)
+    private static string? Name(uint index)
     {
         byte* value = stackalloc byte[16];
         new Span<byte>(value, 16).Clear();
-        if (ExtendedNative.InterfaceName(index, value) == 0) throw new IOException("Interface disappeared.");
+        if (ExtendedNative.InterfaceName(index, value) == 0) return null;
         int length = new ReadOnlySpan<byte>(value, 16).IndexOf((byte)0);
         if (length <= 0) throw new InvalidDataException("Invalid interface name.");
         return System.Text.Encoding.ASCII.GetString(new ReadOnlySpan<byte>(value, length));

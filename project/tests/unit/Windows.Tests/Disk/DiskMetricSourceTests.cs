@@ -1,12 +1,13 @@
 using DesktopSystemMonitor.Core.Metrics;
 using DesktopSystemMonitor.Windows.Disk;
+using DesktopSystemMonitor.Windows.Pdh;
 using Xunit;
 
 namespace DesktopSystemMonitor.Windows.Tests.Disk;
 
 public sealed class DiskMetricSourceTests
 {
-    private static readonly string[] DiskZeroPaths = [@"\PhysicalDisk(0 C:)\% Idle Time"];
+    private static readonly ExpandedCounter[] DiskZeroPaths = [new(@"\PhysicalDisk(0 C:)\% Idle Time", @"\物理ディスク(0 C:)\アイドル時間", "0 C:")];
 
     [Fact]
     public async Task samples_selected_disk_after_warmup()
@@ -228,6 +229,8 @@ public sealed class DiskMetricSourceTests
         public double Write { get; init; }
         public List<string> AddedPaths { get; } = [];
         public bool Disposed { get; private set; }
+
+        public bool TryAddCounter(ExpandedCounter counter) => TryAddCounter(counter.EnglishPath);
 
         public bool TryAddCounter(string path)
         {

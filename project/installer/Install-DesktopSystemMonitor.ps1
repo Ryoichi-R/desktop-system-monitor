@@ -118,11 +118,11 @@ function Get-RelativePathPortable {
         [Parameter(Mandatory)][string]$Root,
         [Parameter(Mandatory)][string]$Path
     )
-    $rootFull = (ConvertTo-FullPath -Path $Root).TrimEnd('\') + '\'
+    $rootFull = (ConvertTo-FullPath -Path $Root).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     $pathFull = ConvertTo-FullPath -Path $Path
     $rootUri = New-Object Uri($rootFull)
     $pathUri = New-Object Uri($pathFull)
-    return $rootUri.MakeRelativeUri($pathUri).ToString().Replace('/', '\')
+    return [Uri]::UnescapeDataString($rootUri.MakeRelativeUri($pathUri).ToString()).Replace('/', '\')
 }
 
 function Get-PeMachine {
@@ -219,59 +219,62 @@ function New-ManagedFileMap {
     foreach ($file in @($ManagedFiles)) {
         $path = [string](Get-RequiredProperty -Object $file -Name 'path')
         $key = $path.Replace('\', '/').ToLowerInvariant()
+        if (-not (Assert-ZipEntrySafe $path)) { throw "Invalid managed file path: $path" }
         if ($map.ContainsKey($key)) { throw "Duplicate managed file in manifest: $path" }
         $map[$key] = $file
     }
     return $map
 }
 
-function Remove-NewManagedOnlyFiles {
-    param(
-        [Parameter(Mandatory)][string]$InstallDirectory,
-        [Parameter(Mandatory)]$OldManagedFiles,
-        [Parameter(Mandatory)]$NewManagedFiles
-    )
+function New-OwnedDirectory {
+    param([string]$Path, $Created)
+    Assert-NotReparsePoint -Path $Path
+    if ([IO.Directory]::Exists($Path)) { return }
+    New-OwnedDirectory -Path (Split-Path -Parent $Path) -Created $Created
+    # Move is exclusive, even when another process creates the directory first.
+    $temp = Join-Path (Split-Path -Parent $Path) ([guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($temp)
+    try {
+        [IO.Directory]::Move($temp, $Path)
+        $Created.Add($Path)
+    }
+    finally { if ([IO.Directory]::Exists($temp)) { [IO.Directory]::Delete($temp) } }
+}
 
-    $oldMap = New-ManagedFileMap -ManagedFiles $OldManagedFiles
-    foreach ($newFile in @($NewManagedFiles)) {
-        $relative = ([string](Get-RequiredProperty -Object $newFile -Name 'path')).Replace('/', '\')
-        $key = $relative.Replace('\', '/').ToLowerInvariant()
-        if ($oldMap.ContainsKey($key)) { continue }
-        $path = Assert-PathWithinRoot -Path (Join-Path $InstallDirectory $relative) -Root $InstallDirectory
-        if (-not (Test-Path -LiteralPath $path)) { continue }
-        $item = Get-Item -LiteralPath $path -Force
-        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-            throw "Refusing to remove a reparse point during rollback: $relative"
+function Remove-OwnedPaths {
+    param($Files, $Directories)
+    foreach ($path in $Files) { [IO.File]::Delete($path) }
+    foreach ($path in @($Directories | Sort-Object Length -Descending)) {
+        if ([IO.Directory]::Exists($path) -and @(Get-ChildItem -LiteralPath $path -Force).Count -eq 0) {
+            [IO.Directory]::Delete($path)
         }
-        if (-not $item.PSIsContainer) { Remove-Item -LiteralPath $path -Force }
     }
 }
 
-function Remove-EmptyManagedDirectories {
-    param(
-        [Parameter(Mandatory)][string]$InstallDirectory,
-        [Parameter(Mandatory)]$ManagedFiles
-    )
+function Stop-RecoveryRequired {
+    param([string]$Message)
+    $exception = [IO.IOException]::new($Message)
+    $exception.Data['DesktopSystemMonitor.RecoveryRequired'] = $true
+    throw $exception
+}
 
-    $root = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar)
-    $directories = @{}
-    foreach ($file in @($ManagedFiles)) {
-        $relative = ([string](Get-RequiredProperty -Object $file -Name 'path')).Replace('/', '\')
-        $parent = Split-Path -Parent $relative
-        while (-not [string]::IsNullOrWhiteSpace($parent) -and $parent -ne '.') {
-            $full = Assert-PathWithinRoot -Path (Join-Path $root $parent) -Root $root
-            $directories[$full.ToLowerInvariant()] = $full
-            $parent = Split-Path -Parent $parent
+function Get-InstallerBackupBase {
+    Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DesktopSystemMonitorInstaller\Backups'
+}
+
+function Copy-InstallFile {
+    param([string]$Source, [string]$Destination, [bool]$Overwrite, $Created)
+    $mode = if ($Overwrite) { [IO.FileMode]::Create } else { [IO.FileMode]::CreateNew }
+    $inputStream = [IO.File]::OpenRead($Source)
+    try {
+        $outputStream = [IO.File]::Open($Destination, $mode, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            if (-not $Overwrite) { $Created.Add($Destination) }
+            $inputStream.CopyTo($outputStream)
         }
+        finally { $outputStream.Dispose() }
     }
-    foreach ($directory in @($directories.Values | Sort-Object Length -Descending)) {
-        if (-not (Test-Path -LiteralPath $directory -PathType Container)) { continue }
-        $item = Get-Item -LiteralPath $directory -Force
-        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-        if (@(Get-ChildItem -LiteralPath $directory -Force).Count -eq 0) {
-            Remove-Item -LiteralPath $directory -Force
-        }
-    }
+    finally { $inputStream.Dispose() }
 }
 
 function Assert-ManagedFilesMatchMarker {
@@ -341,23 +344,24 @@ function Test-ArchiveAndExtract {
 function Write-InstallMarker {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)]$Marker
+        [Parameter(Mandatory)]$Marker,
+        [switch]$ReplaceExisting
     )
     $temp = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
     $backup = "$Path.$([guid]::NewGuid().ToString('N')).bak"
     try {
         $Marker | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $temp -Encoding UTF8
         $null = Get-Content -LiteralPath $temp -Raw | ConvertFrom-Json
-        if (Test-Path -LiteralPath $Path) {
+        if ($ReplaceExisting) {
             [IO.File]::Replace($temp, $Path, $backup, $true)
         }
         else {
-            Move-Item -LiteralPath $temp -Destination $Path
+            [IO.File]::Move($temp, $Path)
         }
     }
     finally {
         if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }
-        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force -ErrorAction Continue }
     }
 }
 
@@ -379,44 +383,13 @@ function Invoke-Install {
         [Parameter(Mandatory)][string]$PackageChannel
     )
     $installDirectory = Join-Path $Parent 'Desktop System Monitor'
-    Assert-NotReparsePoint -Path $Parent
-    if (Test-Path -LiteralPath $installDirectory) { Assert-NotReparsePoint -Path $installDirectory }
     $markerPath = Join-Path $installDirectory '.desktop-system-monitor-install.json'
-    $existingMarker = if (Test-Path -LiteralPath $installDirectory -PathType Container) { Get-ExistingMarker -InstallDirectory $installDirectory } else { $null }
-    if ((Test-Path -LiteralPath $installDirectory -PathType Container) -and $null -eq $existingMarker) {
-        $existingItems = @(Get-ChildItem -LiteralPath $installDirectory -Force)
-        if ($existingItems.Count -gt 0) { throw 'The destination exists without a trusted installer marker.' }
-    }
-    foreach ($process in @(Get-Process -Name DesktopSystemMonitor -ErrorAction SilentlyContinue)) {
-        $processPath = $null
-        try { $processPath = $process.MainModule.FileName } catch { $processPath = $null }
-        $targetExecutable = ConvertTo-FullPath -Path (Join-Path $installDirectory 'DesktopSystemMonitor.exe')
-        if (-not [string]::IsNullOrWhiteSpace($processPath) -and (ConvertTo-FullPath -Path $processPath) -ieq $targetExecutable) {
-            throw 'DesktopSystemMonitor is running from the selected install directory. Close it before updating.'
-        }
-        if ([string]::IsNullOrWhiteSpace($processPath) -and (Test-Path -LiteralPath $installDirectory -PathType Container)) {
-            throw 'A DesktopSystemMonitor process is running and its executable path could not be inspected.'
-        }
-        if (-not [string]::IsNullOrWhiteSpace($processPath)) {
-            Write-Warning "A DesktopSystemMonitor process is running from another path and will not be modified: $processPath"
-        }
-    }
-
     $managed = New-ManagedFileMap -ManagedFiles (Get-RequiredProperty -Object $RuntimeEntry -Name 'managedFiles')
     $payloadBytes = [int64](Get-RequiredProperty -Object $RuntimeEntry -Name 'totalUncompressedBytes')
-    $backupBytes = if ($null -ne $existingMarker) { $payloadBytes } else { 0 }
-    $requiredBytes = $payloadBytes + $backupBytes + 16MB
-    if ((Get-DirectoryFreeBytes -Path $Parent) -lt $requiredBytes) { throw "Insufficient free space. Required approximately $requiredBytes bytes." }
     $tempPath = [IO.Path]::GetTempPath()
-    $tempRequiredBytes = ($payloadBytes * 2) + 16MB
-    if ((Get-DirectoryFreeBytes -Path $tempPath) -lt $tempRequiredBytes) {
-        throw "Insufficient free space in the temporary directory ($tempPath). Required approximately $tempRequiredBytes bytes."
-    }
-
     $tempRoot = Join-Path $tempPath ('DesktopSystemMonitorInstaller-' + [guid]::NewGuid().ToString('N'))
     $extractionRoot = Join-Path $tempRoot 'payload'
-    $stagedInstall = Join-Path $tempRoot 'install'
-    $backupBase = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DesktopSystemMonitorInstaller\Backups'
+    $backupBase = Get-InstallerBackupBase
     $installHash = New-PathHash -Path $installDirectory
     $backupPath = Join-Path $backupBase $installHash
     $backupTemp = Join-Path $backupBase ('.staging-' + [guid]::NewGuid().ToString('N'))
@@ -424,53 +397,116 @@ function Invoke-Install {
     $mutex = New-Object Threading.Mutex($false, $mutexName)
     $haveMutex = $false
     $applyStarted = $false
+    $keepBackup = $false
+    $existingMarker = $null
+    $createdFiles = New-Object 'System.Collections.Generic.List[string]'
+    $createdDirectories = New-Object 'System.Collections.Generic.List[string]'
+    $journalPath = "$backupPath.recovery.json"
     try {
         $haveMutex = $mutex.WaitOne(0)
         if (-not $haveMutex) { throw 'Another installer operation is already running for this destination.' }
+        Assert-NotReparsePoint -Path $Parent
+        if (Test-Path -LiteralPath $installDirectory) { Assert-NotReparsePoint -Path $installDirectory }
+        Assert-NotReparsePoint -Path $markerPath
+        if (Test-Path -LiteralPath $journalPath) {
+            $location = $journalPath
+            try {
+                $journal = Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json
+                $location = $journal.backupPath
+                if ($journal.installDirectory -ne $installDirectory) { throw 'Recovery destination mismatch.' }
+                if ($null -eq $journal.markerSha256) {
+                    if (Test-Path -LiteralPath $markerPath) { throw 'Unexpected marker at first-install destination.' }
+                    foreach ($created in $journal.createdFiles) {
+                        if (Test-Path -LiteralPath $created) { throw "New file still present: $created" }
+                    }
+                }
+                else {
+                    if ((Get-FileSha256 $markerPath) -ne $journal.markerSha256) { throw 'Original marker not restored.' }
+                    $restored = Get-ExistingMarker $installDirectory
+                    Assert-ManagedFilesMatchMarker $installDirectory $restored.managedFiles
+                }
+                [IO.File]::Delete($journalPath)
+            }
+            catch { Stop-RecoveryRequired "Recovery pending. Close the app and follow installer/README.md to restore $location to $installDirectory. Journal: $journalPath. $_" }
+        }
+        $existingMarker = if (Test-Path -LiteralPath $installDirectory -PathType Container) { Get-ExistingMarker -InstallDirectory $installDirectory } else { $null }
+        if ((Test-Path -LiteralPath $installDirectory -PathType Container) -and $null -eq $existingMarker) {
+            $existingItems = @(Get-ChildItem -LiteralPath $installDirectory -Force)
+            if ($existingItems.Count -gt 0) { throw 'The destination exists without a trusted installer marker.' }
+        }
+        foreach ($process in @(Get-Process -Name DesktopSystemMonitor -ErrorAction SilentlyContinue)) {
+            $processPath = $null
+            try { $processPath = $process.MainModule.FileName } catch { $processPath = $null }
+            $targetExecutable = ConvertTo-FullPath -Path (Join-Path $installDirectory 'DesktopSystemMonitor.exe')
+            if (-not [string]::IsNullOrWhiteSpace($processPath) -and (ConvertTo-FullPath -Path $processPath) -ieq $targetExecutable) {
+                throw 'DesktopSystemMonitor is running from the selected install directory. Close it before updating.'
+            }
+            if ([string]::IsNullOrWhiteSpace($processPath) -and (Test-Path -LiteralPath $installDirectory -PathType Container)) {
+                throw 'A DesktopSystemMonitor process is running and its executable path could not be inspected.'
+            }
+            if (-not [string]::IsNullOrWhiteSpace($processPath)) {
+                Write-Warning "A DesktopSystemMonitor process is running from another path and will not be modified: $processPath"
+            }
+        }
+
+        $requiredBytes = $payloadBytes + 16MB
+        if ((Get-DirectoryFreeBytes -Path $Parent) -lt $requiredBytes) { throw "Insufficient free space. Required approximately $requiredBytes bytes." }
+        $tempRequiredBytes = ($payloadBytes * 2) + 16MB
+        if ((Get-DirectoryFreeBytes -Path $tempPath) -lt $tempRequiredBytes) {
+            throw "Insufficient free space in the temporary directory ($tempPath). Required approximately $tempRequiredBytes bytes."
+        }
+
         New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
         Test-ArchiveAndExtract -ArchivePath (Join-Path $Root ([string](Get-RequiredProperty -Object $RuntimeEntry -Name 'archive'))) `
             -ExpectedArchiveSha256 ([string](Get-RequiredProperty -Object $RuntimeEntry -Name 'archiveSha256')) `
             -RuntimeEntry $RuntimeEntry -ExtractionRoot $extractionRoot | Out-Null
-        New-Item -ItemType Directory -Path $stagedInstall -Force | Out-Null
-        foreach ($payloadItem in @(Get-ChildItem -LiteralPath $extractionRoot -Force)) {
-            Copy-Item -LiteralPath $payloadItem.FullName -Destination $stagedInstall -Recurse -Force
-        }
-
+        $oldMap = @{}
         if ($null -ne $existingMarker) {
-            New-Item -ItemType Directory -Path $backupTemp -Force | Out-Null
-            foreach ($old in @($existingMarker.managedFiles)) {
-                $oldRelative = ([string](Get-RequiredProperty -Object $old -Name 'path')).Replace('/', '\')
-                $oldPath = Assert-PathWithinRoot -Path (Join-Path $installDirectory $oldRelative) -Root $installDirectory
-                if (Test-Path -LiteralPath $oldPath -PathType Leaf) {
-                    $destination = Join-Path $backupTemp $oldRelative
-                    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-                    Copy-Item -LiteralPath $oldPath -Destination $destination -Force
-                    if ((Get-FileSha256 -Path $oldPath) -ne ([string](Get-RequiredProperty -Object $old -Name 'sha256')).ToLowerInvariant()) {
-                        throw "Managed file was changed outside the installer: $oldRelative"
-                    }
-                }
+            $oldMap = New-ManagedFileMap $existingMarker.managedFiles
+        }
+        foreach ($key in @($oldMap.Keys) + @($managed.Keys)) {
+            $target = Assert-PathWithinRoot (Join-Path $installDirectory $key) $installDirectory
+            $ancestor = $target
+            while ($ancestor -ne $installDirectory) {
+                Assert-NotReparsePoint $ancestor
+                if ($ancestor -ne $target -and [IO.File]::Exists($ancestor)) { throw "Parent path is a file: $ancestor" }
+                $ancestor = Split-Path -Parent $ancestor
             }
-            Copy-Item -LiteralPath $markerPath -Destination (Join-Path $backupTemp '.desktop-system-monitor-install.json') -Force
+            if ($target -eq $markerPath -or [IO.Directory]::Exists($target) -or
+                (-not $oldMap.ContainsKey($key) -and [IO.File]::Exists($target))) { throw "Destination collision: $target" }
+        }
+        if ($null -ne $existingMarker) {
+            $backupBytes = (Get-Item -LiteralPath $markerPath -Force).Length
+            foreach ($old in $oldMap.Values) {
+                $backupBytes += (Get-Item -LiteralPath (Join-Path $installDirectory $old.path) -Force).Length
+            }
+            if ((Get-DirectoryFreeBytes $backupBase) -lt (2 * $backupBytes + 16MB)) { throw "Insufficient backup space: $backupBase" }
+            [void][IO.Directory]::CreateDirectory($backupTemp)
+            foreach ($old in $oldMap.Values) {
+                $destination = Join-Path $backupTemp $old.path
+                [void][IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
+                [IO.File]::Copy((Join-Path $installDirectory $old.path), $destination)
+            }
+            Assert-ManagedFilesMatchMarker $backupTemp $existingMarker.managedFiles
+            $markerHash = Get-FileSha256 $markerPath
+            $backupMarker = Join-Path $backupTemp '.desktop-system-monitor-install.json'
+            [IO.File]::Copy($markerPath, $backupMarker)
+            if ((Get-FileSha256 $backupMarker) -ne $markerHash) { throw 'Backup marker hash mismatch.' }
         }
 
         $applyStarted = $true
-        if (-not (Test-Path -LiteralPath $installDirectory)) { New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null }
-        foreach ($file in @(Get-ChildItem -LiteralPath $stagedInstall -File -Recurse)) {
-            $relative = Get-RelativePathPortable -Root $stagedInstall -Path $file.FullName
-            $destination = Assert-PathWithinRoot -Path (Join-Path $installDirectory $relative) -Root $installDirectory
-            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-            Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
-            if ((Get-FileSha256 -Path $destination) -ne (Get-FileSha256 -Path $file.FullName)) { throw "Post-copy hash mismatch: $relative" }
+        foreach ($key in $managed.Keys) {
+            $relative = $managed[$key].path
+            $source = Join-Path $extractionRoot $relative
+            $destination = Join-Path $installDirectory $relative
+            New-OwnedDirectory (Split-Path -Parent $destination) $createdDirectories
+            Copy-InstallFile $source $destination ($oldMap.ContainsKey($key)) $createdFiles
+            if ((Get-FileSha256 $destination) -ne $managed[$key].sha256) { throw "Post-copy hash mismatch: $relative" }
         }
-        if ($null -ne $existingMarker) {
-            foreach ($old in @($existingMarker.managedFiles)) {
-                $oldRelative = ([string](Get-RequiredProperty -Object $old -Name 'path')).Replace('/', '\')
-                $oldPath = Assert-PathWithinRoot -Path (Join-Path $installDirectory $oldRelative) -Root $installDirectory
-                if (-not $managed.ContainsKey($oldRelative.Replace('\', '/').ToLowerInvariant()) -and (Test-Path -LiteralPath $oldPath -PathType Leaf)) {
-                    Remove-Item -LiteralPath $oldPath -Force
-                }
+        foreach ($key in $oldMap.Keys) {
+            if (-not $managed.ContainsKey($key)) {
+                [IO.File]::Delete((Join-Path $installDirectory $oldMap[$key].path))
             }
-            Remove-EmptyManagedDirectories -InstallDirectory $installDirectory -ManagedFiles $existingMarker.managedFiles
         }
         $marker = [ordered]@{
             schemaVersion = 1
@@ -487,11 +523,25 @@ function Invoke-Install {
                     [ordered]@{ path = [string]$_.path; sha256 = ([string]$_.sha256).ToLowerInvariant(); size = [int64]$_.size }
                 })
         }
-        Write-InstallMarker -Path $markerPath -Marker $marker
+        Write-InstallMarker -Path $markerPath -Marker $marker -ReplaceExisting:($null -ne $existingMarker)
+        $applyStarted = $false
         if ($null -ne $existingMarker) {
-            if (Test-Path -LiteralPath $backupPath) { Remove-Item -LiteralPath $backupPath -Recurse -Force }
-            New-Item -ItemType Directory -Path $backupBase -Force | Out-Null
-            Move-Item -LiteralPath $backupTemp -Destination $backupPath
+            $keepBackup = $true
+            $previous = "$backupPath.previous-$([guid]::NewGuid().ToString('N'))"
+            try {
+                if ([IO.Directory]::Exists($backupPath)) { [IO.Directory]::Move($backupPath, $previous) }
+                [IO.Directory]::Move($backupTemp, $backupPath)
+                if ([IO.Directory]::Exists($previous)) {
+                    # Recursive deletion can fail after removing some files. Keep
+                    # a complete generation until deleting the directory succeeds.
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+                    [IO.Compression.ZipFile]::CreateFromDirectory($previous, "$previous.zip",
+                        [IO.Compression.CompressionLevel]::NoCompression, $false)
+                    Remove-Item -LiteralPath $previous -Recurse -Force
+                    [IO.File]::Delete("$previous.zip")
+                }
+            }
+            catch { Write-Warning "Update committed. Backup rotation incomplete: $_. Check $backupPath, $backupTemp and $previous (or $previous.zip)." }
         }
         Write-Host "Installed Desktop System Monitor ($Rid) to $installDirectory" -ForegroundColor Green
         if ([string]$RuntimeEntry.distributionStatus -eq 'local-only') {
@@ -503,47 +553,41 @@ function Invoke-Install {
         $primary = $_.Exception.Message
         if ($applyStarted) {
             try {
+                Remove-OwnedPaths $createdFiles $createdDirectories
                 if ($null -ne $existingMarker) {
-                    if (-not (Test-Path -LiteralPath $backupTemp -PathType Container)) {
-                        throw 'Rollback backup staging directory is missing.'
+                    foreach ($old in $oldMap.Values) {
+                        $destination = Join-Path $installDirectory $old.path
+                        if ([IO.File]::Exists($destination) -and (Get-FileSha256 $destination) -eq $old.sha256) { continue }
+                        [IO.File]::Copy((Join-Path $backupTemp $old.path), $destination, $true)
                     }
-                    $oldManagedMap = New-ManagedFileMap -ManagedFiles $existingMarker.managedFiles
-                    Remove-NewManagedOnlyFiles -InstallDirectory $installDirectory `
-                        -OldManagedFiles $existingMarker.managedFiles -NewManagedFiles $managed.Values
-                    $newOnly = @($managed.Values | Where-Object {
-                            -not $oldManagedMap.ContainsKey(
-                                ([string](Get-RequiredProperty -Object $_ -Name 'path')).Replace('/', '\').Replace('\', '/').ToLowerInvariant())
-                        })
-                    Remove-EmptyManagedDirectories -InstallDirectory $installDirectory -ManagedFiles $newOnly
-                    foreach ($old in @($existingMarker.managedFiles)) {
-                        $relative = ([string](Get-RequiredProperty -Object $old -Name 'path')).Replace('/', '\')
-                        $source = Join-Path $backupTemp $relative
-                        $destination = Assert-PathWithinRoot -Path (Join-Path $installDirectory $relative) -Root $installDirectory
-                        if (Test-Path -LiteralPath $source -PathType Leaf) {
-                            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-                            Copy-Item -LiteralPath $source -Destination $destination -Force
-                        }
+                    if (-not [IO.File]::Exists($markerPath) -or (Get-FileSha256 $markerPath) -ne $markerHash) {
+                        [IO.File]::Copy($backupMarker, $markerPath, $true)
                     }
-                    Write-InstallMarker -Path $markerPath -Marker $existingMarker
-                    Assert-ManagedFilesMatchMarker -InstallDirectory $installDirectory -ManagedFiles $existingMarker.managedFiles
-                }
-                else {
-                    foreach ($file in @($managed.Values)) {
-                        $relative = ([string](Get-RequiredProperty -Object $file -Name 'path')).Replace('/', '\')
-                        $path = Join-Path $installDirectory $relative
-                        if (Test-Path -LiteralPath $path -PathType Leaf) { Remove-Item -LiteralPath $path -Force }
-                    }
-                    Remove-EmptyManagedDirectories -InstallDirectory $installDirectory -ManagedFiles $managed.Values
-                    if ($null -eq $existingMarker -and (Test-Path -LiteralPath $markerPath)) { Remove-Item -LiteralPath $markerPath -Force }
+                    Assert-ManagedFilesMatchMarker $installDirectory $existingMarker.managedFiles
+                    if ((Get-FileSha256 $markerPath) -ne $markerHash) { throw 'Restored marker hash mismatch.' }
                 }
             }
-            catch { throw "Install failed and rollback failed. Primary: $primary. Rollback: $($_.Exception.Message)" }
+            catch {
+                $rollback = $_.Exception.Message
+                $keepBackup = $true
+                $savedHash = if ($null -ne $existingMarker) { $markerHash } else { $null }
+                $recoveryLocation = if ($null -ne $existingMarker) { $backupTemp } else { $installDirectory }
+                $journal = [ordered]@{ installDirectory = $installDirectory; backupPath = $recoveryLocation; markerSha256 = $savedHash
+                    primaryError = $primary; rollbackError = $rollback; recordedAt = [DateTime]::UtcNow.ToString('o')
+                    createdFiles = $createdFiles; createdDirectories = $createdDirectories }
+                try {
+                    [void][IO.Directory]::CreateDirectory($backupBase)
+                    Write-InstallMarker $journalPath $journal
+                }
+                catch { $rollback += ". Journal write failed: $_" }
+                Stop-RecoveryRequired "Install failed: $primary. Rollback failed: $rollback. Recovery location: $recoveryLocation. Recovery journal: $journalPath"
+            }
         }
-        throw $primary
+        throw
     }
     finally {
-        if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }
-        if (Test-Path -LiteralPath $backupTemp) { Remove-Item -LiteralPath $backupTemp -Recurse -Force }
+        if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction Continue }
+        if (-not $keepBackup -and (Test-Path -LiteralPath $backupTemp)) { Remove-Item -LiteralPath $backupTemp -Recurse -Force -ErrorAction Continue }
         if ($haveMutex) { $mutex.ReleaseMutex() }
         $mutex.Dispose()
     }
@@ -612,7 +656,7 @@ function Invoke-Main {
         return $result
     }
     finally {
-        if ($null -ne $temporaryPayloadRoot -and (Test-Path -LiteralPath $temporaryPayloadRoot)) { Remove-Item -LiteralPath $temporaryPayloadRoot -Recurse -Force }
+        if ($null -ne $temporaryPayloadRoot -and (Test-Path -LiteralPath $temporaryPayloadRoot)) { Remove-Item -LiteralPath $temporaryPayloadRoot -Recurse -Force -ErrorAction Continue }
         Close-InstallerPayloadLock -Lock $payloadLock
     }
 }
@@ -623,9 +667,10 @@ $exitCode = 0
 try { $exitCode = Invoke-Main }
 catch [System.OperationCanceledException] { Write-Warning $_.Exception.Message; $exitCode = 3 }
 catch {
-    Write-Error $_.Exception.Message
+    Write-Error $_.Exception.Message -ErrorAction Continue
     $message = $_.Exception.Message
-    if ($message -match 'Unsupported processor|validation-only|distribution status|channel|Public distribution|archive is missing') { $exitCode = 4 } else { $exitCode = 5 }
+    if ($_.Exception.Data.Contains('DesktopSystemMonitor.RecoveryRequired')) { $exitCode = 6 }
+    elseif ($message -match 'Unsupported|does not contain runtime|validation-only|distribution status|channel|Public distribution|archive is missing') { $exitCode = 4 } else { $exitCode = 5 }
 }
 if (-not $NoPause -and $exitCode -ne 0 -and $env:DSM_NO_PAUSE -ne '1') { Write-Host 'Press any key to continue...'; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') }
 exit $exitCode

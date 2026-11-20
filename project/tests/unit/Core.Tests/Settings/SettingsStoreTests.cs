@@ -307,6 +307,78 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(0.75, saved["Opacity"]!.GetValue<double>());
     }
 
+    [Theory]
+    [InlineData("""{"schemaVersion":"6"}""")]
+    [InlineData("""{"SchemaVersion":6.5}""")]
+    [InlineData("""{"schemaVersion":-1}""")]
+    [InlineData("""{"UiScalePercent":90,"UiScalePercent":120}""")]
+    public void damaged_main_preserves_backup_through_failed_save_and_retry(string damaged)
+    {
+        const string backup = """{"UiScalePercent":140}""";
+        File.WriteAllText(_path, damaged);
+        File.WriteAllText(_path + ".bak", backup);
+        bool fail = true;
+        var store = new FileSystemSettingsStore(_path, stream =>
+        {
+            if (fail) throw new IOException("flush");
+            stream.Flush(true);
+        });
+        var recovered = store.Load();
+        Assert.Equal(140, recovered.UiScalePercent);
+        Assert.Throws<IOException>(() => store.Save(recovered));
+        fail = false;
+        store.Save(recovered with { UiScalePercent = 125 });
+        Assert.Equal(backup, File.ReadAllText(_path + ".bak"));
+        var firstSave = File.ReadAllText(_path);
+        Assert.Equal(125, store.Load().UiScalePercent);
+        store.Save(recovered);
+        Assert.Equal(firstSave, File.ReadAllText(_path + ".bak"));
+    }
+
+    [Theory]
+    [InlineData("""{"schemaVersion":6}""")]
+    [InlineData("""{"schemaVersion":6,"SchemaVersion":5}""")]
+    [InlineData("""{"SchemaVersion":5,"SchemaVersion":6,"UiScalePercent":90,"UiScalePercent":120}""")]
+    public void any_future_declaration_protects_both_files(string future)
+    {
+        File.WriteAllText(_path, future);
+        File.WriteAllText(_path + ".bak", "{}");
+        var store = new FileSystemSettingsStore(_path);
+        var settings = store.Load();
+        Assert.True(store.IsReadOnly);
+        Assert.Throws<InvalidOperationException>(() => store.Save(settings));
+        Assert.Equal(future, File.ReadAllText(_path));
+        Assert.Equal("{}", File.ReadAllText(_path + ".bak"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void aliases_round_trip_with_one_canonical_key_and_case_sensitive_extensions(int version)
+    {
+        File.WriteAllText(_path, $$"""{"schemaVersion":{{version}},"uiScalePercent":140,"custom":1,"Custom":2}""");
+        var store = new FileSystemSettingsStore(_path);
+        var settings = store.Load();
+        Assert.Equal(140, settings.UiScalePercent);
+        store.Save(settings);
+        using var saved = JsonDocument.Parse(File.ReadAllBytes(_path));
+        var keys = saved.RootElement.EnumerateObject().Select(p => p.Name).ToArray();
+        Assert.Single(keys, k => k.Equals("SchemaVersion", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(keys, k => k.Equals("UiScalePercent", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(140, saved.RootElement.GetProperty("UiScalePercent").GetDouble());
+        Assert.Equal(1, saved.RootElement.GetProperty("custom").GetInt32());
+        Assert.Equal(2, saved.RootElement.GetProperty("Custom").GetInt32());
+    }
+
+    [Fact]
+    public void duplicate_properties_in_both_files_return_defaults()
+    {
+        const string invalid = """{"UiScalePercent":140,"UiScalePercent":120}""";
+        File.WriteAllText(_path, invalid);
+        File.WriteAllText(_path + ".bak", invalid);
+        Assert.Equal(100, new FileSystemSettingsStore(_path).Load().UiScalePercent);
+    }
+
     public void Dispose()
     {
         try

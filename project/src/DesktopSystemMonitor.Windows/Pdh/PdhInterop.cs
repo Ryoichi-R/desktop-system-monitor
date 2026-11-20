@@ -10,7 +10,24 @@ internal static partial class PdhInterop
     public const uint PDH_FMT_LARGE = 0x0400;
     public const uint PDH_FMT_NOSCALE = 0x1000;
     public const uint PDH_FMT_NOCAP100 = 0x8000;
-    public const uint PDH_REFRESHCOUNTERS = 0x00000001;
+    public const uint PDH_REFRESHCOUNTERS = 4;
+
+    public const uint PDH_MORE_DATA = 0x800007D2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CounterInfoHeader
+    {
+        public uint Length, Type, Version, Status;
+        public int Scale, DefaultScale;
+        public nuint UserData, QueryUserData;
+        public IntPtr FullPath;
+    }
+
+    [LibraryImport("pdh.dll", EntryPoint = "PdhGetCounterInfoW")]
+    internal static partial uint GetCounterInfo(IntPtr counter, int explainText, ref uint size, IntPtr buffer);
+
+    [LibraryImport("pdh.dll", EntryPoint = "PdhAddCounterW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial uint AddLocalizedCounter(SafePdhQueryHandle query, string path, IntPtr userData, out IntPtr counter);
 
     [StructLayout(LayoutKind.Explicit)]
     public struct PDH_FMT_COUNTERVALUE

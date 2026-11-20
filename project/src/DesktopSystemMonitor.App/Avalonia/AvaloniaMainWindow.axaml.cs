@@ -546,7 +546,21 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         {
             SettingsMessage = "設定を読み込めません。元ファイルを保持し、保存を停止しています";
         }
-        finally { UpdateSettingsMenu(); }
+        finally
+        {
+            RefreshStartAtLogin();
+            UpdateSettingsMenu();
+        }
+    }
+
+    private void RefreshStartAtLogin()
+    {
+        if (_startupRegistry is null || Environment.ProcessPath is not string executable) return;
+        try { _settings = _settings with { StartAtLogin = _startupRegistry.IsEnabled(executable) }; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            SettingsMessage = "自動起動の登録状態を確認できません";
+        }
     }
 
     internal void RecoverSettings()
@@ -564,6 +578,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
             _recovery = store.Inspect().Recovery;
             SettingsMessage = "設定を復旧できません。ファイルの状態を確認してください";
         }
+        RefreshStartAtLogin();
         UpdateSettingsMenu();
     }
 
@@ -573,8 +588,6 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
         try
         {
             _settings = settings;
-            if (_startupRegistry is not null && Environment.ProcessPath is string executable)
-                _settings = _settings with { StartAtLogin = _startupRegistry.IsEnabled(executable) };
             Program.Diagnostics.Enabled = _settings.DiagnosticLogging;
             SetWidgetScale(_settings.Scale);
             SetNetworkPeakWindow(_settings.NetworkPeakWindowSeconds);
@@ -631,8 +644,7 @@ public sealed partial class AvaloniaMainWindow : Window, IAsyncDisposable
             {
                 _startupRegistry.Disable();
             }
-            _settings = _settings with { StartAtLogin = enabled };
-            SettingsMessage = "設定は自動保存されます";
+            RefreshStartAtLogin();
             SaveSettings();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)

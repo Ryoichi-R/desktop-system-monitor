@@ -27,6 +27,7 @@ $iconSource = Join-Path $projectRoot 'src/DesktopSystemMonitor.App/Assets/Deskto
 $iconDestination = Join-Path $resources 'DesktopSystemMonitor.icns'
 & /usr/bin/sips -s format icns $iconSource --out $iconDestination | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'macOS application icon conversion failed.' }
+Copy-Item -LiteralPath (Join-Path $projectRoot '../LICENSE') -Destination $resources
 Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.md') -Destination $resources
 $licenseNames = @('Avalonia-12.1.3', 'MicroCom.Runtime-0.11.6', 'Tmds.DBus.Protocol-0.94.1', 'skiasharp.nativeassets.macos-3.119.4', 'harfbuzzsharp.nativeassets.macos-8.3.1.3', 'avalonia.angle.windows.natives-2.1.27548.20260419')
 $licenseRoot = Join-Path $resources 'licenses'

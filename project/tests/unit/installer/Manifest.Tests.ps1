@@ -41,14 +41,7 @@ Describe 'installer manifest helpers' {
             Set-Content -LiteralPath $oldPath -Value 'old'
             Set-Content -LiteralPath $unknownPath -Value 'keep'
             Set-Content -LiteralPath $newPath -Value 'new'
-            $oldFiles = @([pscustomobject]@{ path = 'old/old.txt'; sha256 = (Get-FileSha256 -Path $oldPath); size = 3 })
-            $newFiles = @(
-                $oldFiles[0]
-                [pscustomobject]@{ path = 'licenses/new/runtime.txt'; sha256 = (Get-FileSha256 -Path $newPath); size = 3 }
-            )
-
-            Remove-NewManagedOnlyFiles -InstallDirectory $temp -OldManagedFiles $oldFiles -NewManagedFiles $newFiles
-            Remove-EmptyManagedDirectories -InstallDirectory $temp -ManagedFiles @($newFiles[1])
+            Remove-OwnedPaths @($newPath) @($newDirectory)
 
             (Test-Path -LiteralPath $oldPath -PathType Leaf) | Should -BeTrue
             (Test-Path -LiteralPath $unknownPath -PathType Leaf) | Should -BeTrue

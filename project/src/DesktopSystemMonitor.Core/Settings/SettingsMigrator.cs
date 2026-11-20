@@ -23,16 +23,25 @@ public static class SettingsMigrator
         }
 
         int version = 0;
-        if (obj["SchemaVersion"] is JsonValue v && v.TryGetValue<int>(out int parsed))
+        foreach ((string key, JsonNode? value) in obj.ToArray())
         {
-            version = parsed;
+            if (!KnownKeys.TryGetValue(key, out string? canonical)) continue;
+            if (canonical == nameof(AppSettings.SchemaVersion))
+            {
+                if (value is not JsonValue v || !v.TryGetValue<int>(out int parsed) || parsed < 0)
+                    throw new InvalidDataException("Invalid settings schema version.");
+                if (parsed > AppSettings.CurrentSchemaVersion)
+                    throw new UnsupportedSettingsVersionException(parsed, AppSettings.CurrentSchemaVersion);
+                version = parsed;
+            }
         }
-
-        if (version > AppSettings.CurrentSchemaVersion)
+        // Canonicalize before adding migration defaults. For differently cased
+        // aliases the final value in document order wins, as in deserialization.
+        foreach (var (key, value) in obj.ToArray())
         {
-            // A file written by a newer client would need migration logic we
-            // don't yet ship. Refuse rather than silently coerce values.
-            throw new UnsupportedSettingsVersionException(version, AppSettings.CurrentSchemaVersion);
+            if (!KnownKeys.TryGetValue(key, out string? canonical)) continue;
+            obj.Remove(key);
+            obj[canonical] = value?.DeepClone();
         }
 
         while (version < AppSettings.CurrentSchemaVersion)
@@ -50,6 +59,21 @@ public static class SettingsMigrator
 
         obj["SchemaVersion"] = version;
         return obj;
+    }
+
+    // Check every root declaration before duplicate rejection or deserialization.
+    internal static void CheckVersionDeclarations(ReadOnlySpan<byte> json)
+    {
+        var reader = new Utf8JsonReader(json);
+        while (reader.Read())
+        {
+            if (reader.CurrentDepth != 1 || reader.TokenType != JsonTokenType.PropertyName
+                || !string.Equals(reader.GetString(), nameof(AppSettings.SchemaVersion), StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (reader.Read() && reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int version)
+                && version > AppSettings.CurrentSchemaVersion)
+                throw new UnsupportedSettingsVersionException(version, AppSettings.CurrentSchemaVersion);
+        }
     }
 
     private static int MigrateFromV0(JsonObject obj)
@@ -111,6 +135,10 @@ public static class SettingsMigrator
         PropertyNameCaseInsensitive = true,
         Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
+
+    private static readonly Dictionary<string, string> KnownKeys =
+        JsonSerializer.SerializeToNode(new AppSettings(), SerializerOptions)!.AsObject()
+            .ToDictionary(property => property.Key, property => property.Key, StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class UnsupportedSettingsVersionException(int foundVersion, int supportedVersion)

@@ -317,12 +317,37 @@ public sealed class MacWidgetSettingsTests
         Assert.Contains("自動起動を変更できません", window.SettingsMessage);
     }
 
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Protected_settings_display_actual_login_registration_and_allow_first_toggle(bool registered)
+    {
+        string root = Directory.CreateTempSubdirectory("dsm-login-").FullName;
+        try
+        {
+            string path = Path.Combine(root, "settings.json");
+            const string future = """{"Version":99}""";
+            File.WriteAllText(path, future);
+            var registry = new FakeStartupRegistry { InitiallyEnabled = registered };
+            await using var window = new AvaloniaMainWindow();
+            window.EnableSettings(new MacWidgetSettingsStore(path), registry);
+            Assert.Equal(registered, window.StartAtLogin);
+            Assert.Equal(0, registry.EnableCalls + registry.DisableCalls);
+            window.ToggleStartAtLogin();
+            Assert.Equal(!registered, window.StartAtLogin);
+            Assert.Equal(registered ? 1 : 0, registry.DisableCalls);
+            Assert.Equal(future, File.ReadAllText(path));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private sealed class FakeStartupRegistry : IStartupRegistry
     {
         public int EnableCalls { get; private set; }
         public int DisableCalls { get; private set; }
         public bool ThrowOnEnable { get; init; }
-        public bool IsEnabled(string executablePath) => EnableCalls > DisableCalls;
+        public bool InitiallyEnabled { get; init; }
+        public bool IsEnabled(string executablePath) => EnableCalls + (InitiallyEnabled ? 1 : 0) > DisableCalls;
         public void Enable(string executablePath)
         {
             if (ThrowOnEnable) throw new IOException("test");

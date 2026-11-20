@@ -22,7 +22,12 @@ public static class DiskInstanceName
         {
             return false;
         }
-        string name = pathMatch.Groups["instance"].Value;
+        return TryParseInstance(pathMatch.Groups["instance"].Value, out instance);
+    }
+
+    internal static bool TryParseInstance(string name, out PhysicalDiskInstance instance)
+    {
+        instance = default;
         if (name.Equals("_Total", StringComparison.OrdinalIgnoreCase))
         {
             return false;

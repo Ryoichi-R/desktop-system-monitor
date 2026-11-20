@@ -115,6 +115,11 @@ if ($loginAgent -notin @('true', '1')) {
 }
 
 $resources = Join-Path $contents 'Resources'
+$bundledLicense = Join-Path $resources 'LICENSE'
+if (-not (Test-Path -LiteralPath $bundledLicense -PathType Leaf)) { throw 'Bundle LICENSE is missing.' }
+if ((Get-FileHash -LiteralPath $bundledLicense).Hash -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot '../../LICENSE')).Hash) {
+    throw 'Bundle LICENSE SHA-256 differs from the repository LICENSE.'
+}
 $iconName = Get-PlistRawValue -PlistPath $plist -Key 'CFBundleIconFile'
 if ($iconName -ne 'DesktopSystemMonitor.icns') { throw 'Unexpected application icon name.' }
 $iconPath = Join-Path $resources $iconName

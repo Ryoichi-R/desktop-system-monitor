@@ -19,6 +19,8 @@ public sealed class FileSystemSettingsStore : ISettingsStore
     private JsonObject? _preservedRoot;
     private bool _readOnlyDueToFutureSchema;
 
+    private bool _loadedFromBackup;
+
     public bool IsReadOnly
     {
         get
@@ -48,6 +50,7 @@ public sealed class FileSystemSettingsStore : ISettingsStore
         lock (_gate)
         {
             _readOnlyDueToFutureSchema = false;
+            _loadedFromBackup = false;
             if (!File.Exists(_path))
             {
                 _preservedRoot = null;
@@ -71,7 +74,9 @@ public sealed class FileSystemSettingsStore : ISettingsStore
                 {
                     try
                     {
-                        return LoadFrom(_backupPath);
+                        var restored = LoadFrom(_backupPath);
+                        _loadedFromBackup = true;
+                        return restored;
                     }
                     catch (UnsupportedSettingsVersionException)
                     {
@@ -79,7 +84,7 @@ public sealed class FileSystemSettingsStore : ISettingsStore
                         _readOnlyDueToFutureSchema = true;
                         return new AppSettings().Normalized();
                     }
-                    catch
+                    catch (Exception backupEx) when (backupEx is JsonException or InvalidDataException or IOException)
                     {
                         // fall through
                     }
@@ -92,8 +97,10 @@ public sealed class FileSystemSettingsStore : ISettingsStore
 
     private AppSettings LoadFrom(string path)
     {
-        using var stream = File.OpenRead(path);
-        JsonNode? node = JsonNode.Parse(stream);
+        ReadOnlySpan<byte> json = File.ReadAllBytes(path);
+        if (json.StartsWith(Encoding.UTF8.Preamble)) json = json[Encoding.UTF8.Preamble.Length..];
+        SettingsMigrator.CheckVersionDeclarations(json);
+        JsonNode? node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { AllowDuplicateProperties = false });
         if (node is null)
         {
             throw new InvalidDataException("Settings JSON was null.");
@@ -142,12 +149,13 @@ public sealed class FileSystemSettingsStore : ISettingsStore
 
             if (File.Exists(_path))
             {
-                File.Replace(_tempPath, _path, _backupPath);
+                File.Replace(_tempPath, _path, _loadedFromBackup ? null : _backupPath);
             }
             else
             {
                 File.Move(_tempPath, _path);
             }
+            _loadedFromBackup = false;
             _preservedRoot = merged;
         }
     }

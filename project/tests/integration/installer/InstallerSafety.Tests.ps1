@@ -204,6 +204,8 @@ Describe 'installer exit contract at the process boundary' {
         $ErrorActionPreference = 'Continue' # Windows PowerShell wraps redirected native stderr as error records.
         $output = & $hostPath -NoProfile -ExecutionPolicy Bypass -File $fixture -NoPause 2>&1
         $LASTEXITCODE | Should -Be $code
-        ($output -join ' ') | Should -Match $diagnostic
+        # Windows PowerShell can wrap stderr mid-message, leaving extra whitespace.
+        $diagnosticText = ($output -join ' ') -replace '\s+', ' '
+        $diagnosticText | Should -Match $diagnostic
     }
 }

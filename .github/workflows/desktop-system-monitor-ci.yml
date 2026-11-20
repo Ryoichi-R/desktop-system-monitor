@@ -39,5 +39,5 @@ jobs:
       - run: pwsh project/scripts/test-publication-contract.ps1
       - run: pwsh project/scripts/new-desktop-system-monitor-release.ps1 -DryRun
       - run: pwsh project/scripts/bootstrap-desktop-system-monitor-tests.ps1
-      - run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract WindowsPowerShell51
-      - run: pwsh project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract PowerShell7
+      - run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract WindowsPowerShell51 -IncludeMigratedLayout -DistributionPath project/installer
+      - run: pwsh project/scripts/test-desktop-system-monitor-installer.ps1 -HostContract PowerShell7 -IncludeMigratedLayout -DistributionPath project/installer

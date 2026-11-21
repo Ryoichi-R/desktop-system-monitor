@@ -95,7 +95,7 @@ public sealed class AvaloniaMainWindowMenuTests
     public async Task Menu_Toggles_Apply_And_Persist()
     {
         var store = new MemorySettingsStore();
-        var registry = new FakeStartupRegistry();
+        var registry = new MemoryStartupRegistry();
         await using var window = new AvaloniaMainWindow();
         window.EnableSettings(store, registry);
         window.Show();
@@ -251,14 +251,6 @@ public sealed class AvaloniaMainWindowMenuTests
         MacWidgetSettings inRange = new MacWidgetSettings { X = -5, Y = 7 }.Normalize();
         Assert.Equal(-5, inRange.X);
         Assert.Equal(7, inRange.Y);
-    }
-
-    private sealed class FakeStartupRegistry : IStartupRegistry
-    {
-        internal bool Enabled;
-        public bool IsEnabled(string executablePath) => Enabled;
-        public void Enable(string executablePath) => Enabled = true;
-        public void Disable() => Enabled = false;
     }
 
     private sealed class CountingStore : IMacWidgetSettingsStore

@@ -24,7 +24,7 @@ public sealed class AvaloniaMainWindowTests
     [AvaloniaFact]
     public void Application_Initializes_And_Builds()
     {
-        var app = new AvaloniaApp();
+        var app = TestAppBuilder.CreateApplication();
 
         app.Initialize();
         app.OnFrameworkInitializationCompleted();
@@ -311,7 +311,10 @@ public sealed class AvaloniaMainWindowTests
     public async Task Desktop_Startup_Registers_Tray_Menu_And_Owns_The_Main_Window()
     {
         var lifetime = new ClassicDesktopStyleApplicationLifetime();
-        var app = new AvaloniaApp { ApplicationLifetime = lifetime, SettingsStoreFactory = () => new MemorySettingsStore() };
+        var app = TestAppBuilder.CreateApplication();
+        var startup = Assert.IsType<MemoryStartupRegistry>(app.StartupRegistryFactory());
+        startup.Enabled = true;
+        app.ApplicationLifetime = lifetime;
         app.Initialize();
         app.OnFrameworkInitializationCompleted();
         var window = Assert.IsType<AvaloniaMainWindow>(lifetime.MainWindow);
@@ -319,6 +322,9 @@ public sealed class AvaloniaMainWindowTests
         {
             if (OperatingSystem.IsMacOS())
             {
+                Assert.True(window.StartAtLogin);
+                window.ToggleStartAtLogin();
+                Assert.False(startup.Enabled);
                 var tray = Assert.Single(TrayIcon.GetIcons(app)!);
                 Assert.NotNull(tray.Icon);
                 Assert.True(tray.IsVisible);
